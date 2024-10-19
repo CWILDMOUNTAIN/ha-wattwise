@@ -1,0 +1,39 @@
+name: Linting
+
+on:
+  # Trigger the workflow on push or pull request to the main branch
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # Step 2: Set up Python (you can specify the version)
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    # Step 3: Install dependencies (Ruff and Black) with pip
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black ruff
+
+    # Step 4: Run Ruff, respecting the configuration in pyproject.toml
+    - name: Run Ruff
+      run: |
+        ruff check .
+
+    # Step 5: Run Black in check mode, respecting the pyproject.toml configuration
+    - name: Run Black
+      run: |
+        black --check .
