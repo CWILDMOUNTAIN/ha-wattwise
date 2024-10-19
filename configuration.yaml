@@ -1,0 +1,5 @@
+# Add this in your configuration.yaml in Home Assistant.
+# If you have already a packages-section in your YAML, only add the second line under packages.
+# Mind the indentation.
+packages:
+    wattwise: !include wattwise.yaml
