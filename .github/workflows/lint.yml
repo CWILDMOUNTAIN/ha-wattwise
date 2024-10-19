@@ -33,11 +33,11 @@ jobs:
       run: |
         ruff check .
 
-    # Step 5: Run Black in check mode, respecting the pyproject.toml configuration
+    # Step 5: Run Black in check mode, respecting pyproject.toml
     - name: Run Black
       run: |
         black --check .
 
-    # Step 6: Run yamllint in check mode, respecting the pyproject.toml configuration
+    # Step 6: Run yamllint in check mode, respecting pyproject.toml
     - name: Run yamllint
       run: yamllint -d relaxed .

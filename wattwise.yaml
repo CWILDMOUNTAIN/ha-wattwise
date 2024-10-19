@@ -81,7 +81,7 @@ template:
         state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
-          
+
   - binary_sensor:
       - name: "WattWise Battery Charging from Grid"
         unique_id: "wattwise_battery_charging_from_grid"
