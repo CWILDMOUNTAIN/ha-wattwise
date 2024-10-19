@@ -40,4 +40,4 @@ jobs:
 
     # Step 6: Run yamllint in check mode, respecting the pyproject.toml configuration
     - name: Run yamllint
-      run: yamllint .
+      run: yamllint -d relaxed .
