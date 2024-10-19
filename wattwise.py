@@ -6,7 +6,6 @@ import requests
 import pytz
 
 
-
 class WattWise(hass.Hass):
     """
     WattWise is an AppDaemon application for Home Assistant that optimizes battery usage
