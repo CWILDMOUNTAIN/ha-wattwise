@@ -2,3 +2,4 @@
 # in the homeassistant section of your configuration.yaml
 homeassistant:
   packages: !include_dir_named packages
+  
