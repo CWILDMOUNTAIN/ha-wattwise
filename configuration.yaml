@@ -1,6 +1,4 @@
-# Add this in your configuration.yaml in Home Assistant.
-# If you have already a packages-section in your YAML,
-# only add the second line under packages.
-# Mind the indentation.
-packages:
-    wattwise: !include wattwise.yaml
+# Add the packages statement (2nd line)
+# in the homeassistant section of your configuration.yaml
+homeassistant:
+  packages: !include_dir_named packages

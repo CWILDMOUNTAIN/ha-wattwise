@@ -751,6 +751,7 @@ class WattWise(hass.Hass):
             "sensor.wattwise_grid_export": [],
             "sensor.wattwise_grid_import": [],
             "sensor.wattwise_state_of_charge": [],
+            "sensor.wattwise_state_of_charge_percentage": [],
             "sensor.wattwise_consumption_forecast": [],
             "sensor.wattwise_solar_production_forecast": [],
             "sensor.wattwise_battery_full_charge_status": [],
@@ -768,6 +769,9 @@ class WattWise(hass.Hass):
             # Determine binary states
             desired_charging = entry["charge_grid"] > 0
             desired_discharging = entry["discharge"] > 0
+
+            # Calculate SoC percentage
+            soc_percentage = (entry["soc"] / self.BATTERY_CAPACITY) * 100
 
             # Append data to forecasts
             forecasts["sensor.wattwise_battery_charge_from_solar"].append(
@@ -787,6 +791,9 @@ class WattWise(hass.Hass):
             )
             forecasts["sensor.wattwise_state_of_charge"].append(
                 [timestamp_iso, entry["soc"]]
+            )
+            forecasts["sensor.wattwise_state_of_charge_percentage"].append(
+                [timestamp_iso, soc_percentage]
             )
             forecasts["sensor.wattwise_battery_full_charge_status"].append(
                 [timestamp_iso, entry["full_charge"]]

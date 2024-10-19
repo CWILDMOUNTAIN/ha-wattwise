@@ -1,4 +1,5 @@
 # WattWise 
+![alt text](images/wattwise.png)
 WattWise is an AppDaemon application for [Home Assistant](https://www.home-assistant.io/)  that intelligently optimizes battery usage based on consumption forecasts, solar production forecasts, and dynamic energy prices. By leveraging historical data and real-time information, it schedules battery charging and discharging actions to minimize energy costs and maximize efficiency, providing seamless integration and real-time monitoring through Home Assistant's interface.
 
 ## Table of Contents 
@@ -83,55 +84,56 @@ WattWise leverages linear programming to optimize the charging and discharging s
 
 ### Prerequisites 
  
-- **Home Assistant** : A running instance of Home Assistant.
+- **Home Assistant** : A running instance of [Home Assistant](https://www.home-assistant.io/).
+
+- **HACS** : [Home Assistant Community Store](https://www.hacs.xyz/) installed
+
+- **HA Solcast PV Solar Forecast Integration** : Installed via HACS and configured, so that you get an accurate PV production forecast.
+The script expects the forecast information in the format provided by [Solcast](https://github.com/BJReplay/ha-solcast-solar).
+
+- **Tibber Integration ** : Installed and configured via the [official HA integration](https://www.home-assistant.io/integrations/tibber/). The script expects the price information in the format provided by Tibber.
+
  
-- **AppDaemon** : Install [AppDaemon 4](https://appdaemon.readthedocs.io/en/latest/) .
- 
-- **Python 3.7+** : Required for running AppDaemon and the WattWise script.
- 
-- **Dependencies** : 
-  - `pulp`
- 
-  - `numpy`
- 
-  - `requests`
- 
-  - `pytz`
+- **AppDaemon** : 
+  * Search for the “AppDaemon 4” add-on in the home assistant add-on store and install it.
+  * Start the “AppDaemon 4” add-on
+  * Check the logs of the “AppDaemon 4” add-on to see if everything went well.
+  * [Relevant Forum Entry](https://community.home-assistant.io/t/home-assistant-community-add-on-appdaemon-4/163259)
+  
 
 ### Installation 
  
-1. **Clone the Repository** 
+1. **AppDaemon Python Packages** 
+   
+   Under Settings --> Add-Ons --> AppDaemon --> Configuration:
+     * Add System Packages: `musl-dev`, `gcc`, `glpk`
+     * Add Python Packages: `pulp`, `numpy==1.26.4`, `requests`, `pytz`
+ 
+2. **Set up WattWise in AppDaemon**  
+  * Place `wattwise.py` (the WattWise script) is placed in your AppDaemon apps directory (e.g., `/root/addon_configs/a0d7b954_appdaemon/apps/`).
+  You can do so e.g. via SSH or via the Visual Studio Code AddOns.
 
-```bash
-git clone https://github.com/yourusername/WattWise.git
-cd WattWise
-```
+  * Register the app in `apps.yaml`in the same folder.
+    * `ha_url`: The URL of your Home Assistant instance.
  
-2. **Install Dependencies** 
-It's recommended to use a virtual environment:
-
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-*Alternatively, install dependencies globally:*
-
-```bash
-pip install appdaemon pulp numpy requests pytz
-```
+     * `token`: A long-lived access token from Home Assistant for API access.
+        ```yaml
+        wattwise:
+          module: wattwise
+          class: WattWise
+          ha_url: http://homeassistant.local:8123
+          token: "YOUR_LONG_LIVED_ACCESS_TOKEN"
+        ```
+1. **Configure Home Assistant Sensors**  
+  * Place wattwise.yaml in your `/root/config/packages` folder.
+  if the folder does not exist, create it.
+  * Edit your configuration.yaml file of home assistant and add the packages statement (2nd line) in the homeassistant section of your configuration.yaml
+    ```yaml
+    homeassistant:
+      packages: !include_dir_named packages
+    ```
  
-3. **Place the Python Script**  
-  - Ensure `battery_optimizer.py` (the WattWise script) is placed in your AppDaemon apps directory (e.g., `/config/appdaemon/apps/`).
- 
-4. **Configure WattWise**  
-  - Create a configuration file named `wattwise.yaml` in your AppDaemon apps directory with the necessary settings (see [AppDaemon Setup](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#appdaemon-setup) ).
- 
-5. **Configure Home Assistant Sensors**  
-  - Add custom sensors to your Home Assistant configuration (see [Home Assistant Setup](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#home-assistant-setup) ).
- 
-6. **Restart Services**  
+1. **Restart Services**  
   - **Home Assistant** : Restart to apply sensor configurations.
  
   - **AppDaemon** : Restart to load the WattWise application.
@@ -140,35 +142,9 @@ pip install appdaemon pulp numpy requests pytz
 
 Proper configuration is essential for WattWise to function correctly. Below are the key areas you need to configure.
 
-### Home Assistant Setup 
-
-Create custom sensors in Home Assistant to store the optimization data and forecasts. These sensors will be updated by WattWise to reflect current states and future schedules.
- 
-- **Sensors** : For storing numerical data like battery charge levels, grid import/export, consumption forecasts, etc.
- 
-- **Binary Sensors** : For storing on/off states like whether the battery is charging or discharging.
-Ensure these sensors are defined in your Home Assistant configuration (e.g., `configuration.yaml` or an included file).
-### AppDaemon Setup 
-Configure WattWise in AppDaemon by creating a `wattwise.yaml` file in your AppDaemon apps directory. This file contains important settings that control how WattWise operates.Example `wattwise.yaml` Configuration:** 
-
-```yaml
-wattwise:
-  module: battery_optimizer
-  class: WattWise
-  ha_url: "http://homeassistant.local:8123"
-  token: "YOUR_LONG_LIVED_ACCESS_TOKEN"
-```
-**Parameters Explained:**  
-- `module`: The name of the Python script without the `.py` extension (should match `battery_optimizer` if your script is named `battery_optimizer.py`).
- 
-- `class`: The name of the main class in the Python script (`WattWise`).
- 
-- `ha_url`: The URL of your Home Assistant instance.
- 
-- `token`: A long-lived access token from Home Assistant for API access.
-
 ### Customizing WattWise 
-You can adjust various parameters within the `battery_optimizer.py` script to match your specific setup: 
+You can adjust various parameters within the `wattwise.py` script to match your specific setup: 
+
 - **Battery Parameters** : 
   - `BATTERY_CAPACITY`: Total capacity of your battery in kWh.
  
@@ -188,45 +164,205 @@ You can adjust various parameters within the `battery_optimizer.py` script to ma
   - Update the entity IDs in the script to match your Home Assistant sensors and switches. Key entities include: 
     - **Consumption Sensor** : Represents your house's energy consumption.
  
-    - **Solar Forecast Sensors** : For today and tomorrow's solar production forecasts.
+    - **Solar Forecast Sensors** : For today and tomorrow's solar production forecasts. Has to be in the format provided by Solcast.
  
-    - **Price Forecast Sensor** : Contains the energy price forecast data.
+    - **Price Forecast Sensor** : Contains the energy price forecast data. Has to be in the format provided by Tibber
  
     - **Battery State of Charge Sensor** : Indicates the current charge level of the battery.
  
     - **Battery Charger/Discharger Switches** : Controls for charging and discharging the battery.
+    If you don't have any yet, you can create them as Home Assistant Helpers within Home Assistant.
+
 **Note** : After making changes to the script, restart AppDaemon to apply the updates.
 ## Usage 
 
 Once installed and configured, WattWise automatically runs the optimization process every hour. It analyzes consumption patterns, solar production forecasts, and energy prices to determine the most cost-effective charging and discharging schedule for your battery system.
 
 ### Visualizing Forecasts 
-Integrate with [ApexCharts](https://github.com/RomRider/apexcharts-card)  in Home Assistant to visualize forecast data and optimized schedules.**Example ApexCharts Configuration:** 
+Integrate with [ApexCharts](https://github.com/RomRider/apexcharts-card)  in Home Assistant to visualize forecast data and optimized schedules.
+
+**Example ApexCharts Configuration:** 
+
+***Forecast***
+
+![WattWise Forecast](images/wattwise_forecast.png)
+
 
 ```yaml
 type: custom:apexcharts-card
 graph_span: 24h
+apex_config:
+  chart:
+    height: 400px
 span:
   start: hour
+all_series_config:
+  stroke_width: 2
 header:
   show: true
-  title: Battery Charge from Solar Forecast
+  title: WattWise Forecast
+yaxis:
+  - id: kWh
+    decimals: 0
+    apex_config:
+      tickAmount: 11
+  - id: ct
+    opposite: true
+    decimals: 0
+    apex_config:
+      tickAmount: 4
 series:
-  - entity: sensor.battery_charge_from_solar
+  - entity: sensor.wattwise_battery_charge_from_solar
     name: Charge from Solar
-    type: line
+    yaxis_id: kWh
+    unit: kWh
     data_generator: |
       return entity.attributes.forecast.map(item => {
         return [new Date(item[0]).getTime(), item[1]];
       });
-yaxis:
-  - id: charging_axis
-    min: 0
-    max: 10
-    decimals: 1
-    opposite: false
+  - entity: sensor.wattwise_battery_charge_from_grid
+    name: Charge from Grid
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: sensor.wattwise_battery_discharge
+    name: Battery Discharge
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: sensor.wattwise_grid_export
+    name: Grid Export
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: sensor.wattwise_grid_import
+    name: Grid Import
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: sensor.wattwise_state_of_charge
+    name: State of Charge
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: sensor.wattwise_consumption_forecast
+    name: Consumption Forecast
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: sensor.wattwise_solar_production_forecast
+    name: Solar Production Forecast
+    yaxis_id: kWh
+    unit: kWh
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        return [new Date(item[0]).getTime(), item[1]];
+      });
+  - entity: binary_sensor.wattwise_battery_charging_from_grid
+    name: Charging from Grid
+    type: line
+    curve: stepline
+    extend_to: false
+    stroke_width: 2
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        const value = item[1] === 'on' ? 1 : 0;
+        return [new Date(item[0]).getTime(), value];
+      });
+    yaxis_id: kWh
+  - entity: binary_sensor.wattwise_battery_discharging_enabled
+    name: Battery Discharging Enabled
+    type: line
+    curve: stepline
+    extend_to: false
+    stroke_width: 2
+    data_generator: |
+      return entity.attributes.forecast.map(item => {
+        const value = item[1] === 'on' ? 1 : 0;
+        return [new Date(item[0]).getTime(), value];
+      });
+    yaxis_id: kWh
+  - entity: sensor.tibber_prices
+    yaxis_id: ct
+    name: Preis
+    unit: ct
+    type: line
+    curve: stepline
+    extend_to: false
+    stroke_width: 2
+    float_precision: 2
+    data_generator: |
+      const noon = new Date()
+      noon.setHours(0, 0, 0, 0)
+      const prices = entity.attributes.today.concat(entity.attributes.tomorrow);
+      const data = [];
+      for(let i = 0; i < prices.length; i++) {
+        data.push([noon.getTime() + i * 1000 * 3600, prices[i].total * 100])
+      }
+      return data;
+
 ```
-*Repeat similar configurations for other sensors to visualize different aspects of the battery optimization.*
+***Compaing Actuals/Forecast***
+![actual/forecast comparison](images/wattwise_comparing.png)
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+apex_config:
+  chart:
+    height: 400px
+all_series_config:
+  stroke_width: 2
+  group_by:
+    func: avg
+    duration: 1h
+header:
+  show: true
+  title: WattWise actual/forecast comparison
+series:
+  - entity: sensor.s10x_house_consumption
+    name: Consumption (actual)
+    unit: kW
+  - entity: sensor.wattwise_consumption_forecast
+    name: Consumption (forecast)
+    unit: kW
+  - entity: sensor.s10x_state_of_charge
+    name: Battery SoC (actual)
+    unit: "%"
+  - entity: sensor.wattwise_state_of_charge_percentage
+    name: Battery SoC (forecast)
+    unit: "%"
+  - entity: sensor.s10x_consumption_from_grid
+    name: Grid Import (actual)
+    unit: kW
+  - entity: sensor.wattwise_grid_import
+    name: Grid Import (forecast)
+    unit: kW
+  - entity: sensor.s10x_export_to_grid
+    name: Grid Export (actual)
+    unit: kW
+  - entity: sensor.wattwise_grid_export
+    name: Grid Export (forecast)
+    unit: kW
+
+```
 ## Contributing 
 
 Contributions are welcome! Whether it's reporting bugs, suggesting features, or submitting pull requests, your input helps improve WattWise.
@@ -256,26 +392,21 @@ git push origin feature/YourFeature
 Please ensure that your contributions adhere to the project's coding standards and include appropriate documentation.
 
 ## License 
-This project is licensed under the [MIT License](https://chatgpt.com/c/LICENSE) .
+This project is licensed under the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.html.en#license-text).
+
 ## Contact 
  
-- **Your Name**
- 
-- **Email** : [your.email@example.com]()
- 
-- **GitHub** : [yourusername](https://github.com/yourusername)
+  
+- **GitHub** : [bullitt168](https://github.com/bullitt168)
 
 ## Acknowledgements 
  
 - [AppDaemon](https://appdaemon.readthedocs.io/en/latest/)
  
 - [Home Assistant](https://www.home-assistant.io/)
- 
-- [PuLP Optimization Library]()
- 
+
+- [SolCast](https://github.com/BJReplay/ha-solcast-solar)
+  
 - [ApexCharts Card](https://github.com/RomRider/apexcharts-card)
  
-- [Material Design Icons](https://materialdesignicons.com/)
- 
-- [Readme Best Practices](https://github.com/jehna/readme-best-practices)
 
