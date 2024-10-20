@@ -92,7 +92,7 @@ WattWise leverages linear programming to optimize the charging and discharging s
 - **HA Solcast PV Solar Forecast Integration** : Installed via HACS and configured, so that you get an accurate PV production forecast.
 The script expects the forecast information in the format provided by [Solcast](https://github.com/BJReplay/ha-solcast-solar).
 
-- **Tibber Integration ** : Installed and configured via the [official HA integration](https://www.home-assistant.io/integrations/tibber/). The script expects the price information in the format provided by Tibber.
+- **Tibber Integration** : Installed and configured via the [official HA integration](https://www.home-assistant.io/integrations/tibber/). The script expects the price information in the format provided by Tibber.
 
  
 - **AppDaemon** : 
