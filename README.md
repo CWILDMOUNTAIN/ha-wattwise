@@ -1,6 +1,8 @@
 # WattWise 
 ![WattWise Logo](images/wattwise.png)
-
+![GitHub License](https://img.shields.io/github/license/bullitt186/ha-wattwise?style=for-the-badge)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/y/bullitt186/ha-wattwise?style=for-the-badge)
+![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge)
 WattWise is an AppDaemon application for [Home Assistant](https://www.home-assistant.io/)  that intelligently optimizes battery usage based on consumption forecasts, solar production forecasts, and dynamic energy prices. By leveraging historical data and real-time information, it schedules battery charging and discharging actions to minimize energy costs and maximize efficiency, providing seamless integration and real-time monitoring through Home Assistant's interface.
 
 ## Table of Contents 
