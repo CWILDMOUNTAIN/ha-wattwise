@@ -16,12 +16,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import datetime
+import json
+import os
 
 import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
 import pulp
 import pytz
 import requests
+import tzlocal
 
 
 class WattWise(hass.Hass):
@@ -30,25 +33,6 @@ class WattWise(hass.Hass):
     based on consumption forecasts, solar production forecasts, and energy price forecasts.
     It schedules charging and discharging actions to minimize energy costs and maximize
     battery efficiency.
-
-    Attributes:
-        BATTERY_CAPACITY (float): The total capacity of the battery in kWh.
-        BATTERY_EFFICIENCY (float): The efficiency of the battery (0 < efficiency <= 1).
-        CHARGE_RATE_MAX (float): The maximum charging rate in kW.
-        DISCHARGE_RATE_MAX (float): The maximum discharging rate in kW.
-        TIME_HORIZON (int): The optimization time horizon in hours.
-        FEED_IN_TARIFF (float): The tariff for feeding energy back to the grid in ct/kWh.
-        CONSUMPION_SENSOR (str): Entity ID for the house consumption sensor.
-        SOLAR_FORECAST_SENSOR_TODAY (str): Entity ID for today's solar forecast sensor.
-        SOLAR_FORECAST_SENSOR_TOMORROW (str): Entity ID for tomorrow's solar forecast sensor.
-        PRICE_FORECAST_SENSOR (str): Entity ID for the energy price forecast sensor.
-        BATTERY_SOC_SENSOR (str): Entity ID for the battery state of charge sensor.
-        BATTERY_CHARGER_SWITCH (str): Entity ID for the battery charger switch.
-        BATTERY_DISCHARGER_SWITCH (str): Entity ID for the battery discharger switch.
-        ha_url (str): URL of the Home Assistant instance.
-        token (str): Authentication token for Home Assistant API.
-        charging_from_grid (bool): Current state of charging from the grid.
-        discharging_to_house (bool): Current state of discharging to the house.
     """
 
     def initialize(self):
@@ -58,9 +42,6 @@ class WattWise(hass.Hass):
         This method sets up the initial configuration, schedules the hourly optimization
         process, and listens for manual optimization triggers. It fetches initial states
         of charger and discharger switches to track current charging and discharging statuses.
-
-        Raises:
-            ValueError: If Home Assistant URL or token is not provided in app configuration.
         """
         # Constants for Static Parameters
         self.BATTERY_CAPACITY = 11.2  # kWh
@@ -69,21 +50,49 @@ class WattWise(hass.Hass):
         self.DISCHARGE_RATE_MAX = 6  # kW
         self.TIME_HORIZON = 24  # hours
         self.FEED_IN_TARIFF = 7  # ct/kWh
+        self.CONSUMPTION_HISTORY_DAYS = 7  # days
 
-        # Your Entity IDs
+        # Constants for Home Assistant Entity IDs
         self.CONSUMPTION_SENSOR = "sensor.s10x_house_consumption"
         self.SOLAR_FORECAST_SENSOR_TODAY = "sensor.solcast_pv_forecast_prognose_heute"
         self.SOLAR_FORECAST_SENSOR_TOMORROW = (
             "sensor.solcast_pv_forecast_prognose_morgen"
         )
         self.PRICE_FORECAST_SENSOR = "sensor.tibber_prices"
-        self.BATTERY_SOC_SENSOR = "sensor.s10x_state_of_charge"  # SoC in percentage
+        self.BATTERY_SOC_SENSOR = "sensor.s10x_state_of_charge"
 
-        # WattWise's Helper Switches in Home Assistant. You can change these to existing switches you may have as well.
-        self.BATTERY_CHARGER_SWITCH = "switch.wattwise_battery_charger"
-        self.BATTERY_DISCHARGER_SWITCH = (
-            "switch.wattwise_battery_discharger"  # Added discharger switch
+        # Constants for Switches
+        self.BATTERY_CHARGING_SWITCH = (
+            "input_boolean.wattwise_battery_charging_from_grid"
         )
+        self.BATTERY_DISCHARGING_SWITCH = (
+            "input_boolean.wattwise_battery_discharging_enabled"
+        )
+
+        # Constants for State Tracking Binary Sensors
+        self.BINARY_SENSOR_CHARGING = (
+            "binary_sensor.wattwise_battery_charging_from_grid"
+        )
+        self.BINARY_SENSOR_DISCHARGING = (
+            "binary_sensor.wattwise_battery_discharging_enabled"
+        )
+
+        # Constants for Forecast Sensors
+        self.SENSOR_CHARGE_SOLAR = "sensor.wattwise_battery_charge_from_solar"
+        self.SENSOR_CHARGE_GRID = "sensor.wattwise_battery_charge_from_grid"
+        self.SENSOR_DISCHARGE = "sensor.wattwise_battery_discharge"
+        self.SENSOR_GRID_EXPORT = "sensor.wattwise_grid_export"
+        self.SENSOR_GRID_IMPORT = "sensor.wattwise_grid_import"
+        self.SENSOR_SOC = "sensor.wattwise_state_of_charge"
+        self.SENSOR_SOC_PERCENTAGE = "sensor.wattwise_state_of_charge_percentage"
+        self.SENSOR_CONSUMPTION_FORECAST = "sensor.wattwise_consumption_forecast"
+        self.SENSOR_SOLAR_PRODUCTION_FORECAST = (
+            "sensor.wattwise_solar_production_forecast"
+        )
+        self.SENSOR_FULL_CHARGE_STATUS = "sensor.wattwise_battery_full_charge_status"
+
+        # Usable Time Horizon
+        self.T = self.TIME_HORIZON
 
         # Get Home Assistant URL and token from app args
         self.ha_url = self.args.get("ha_url")
@@ -99,15 +108,28 @@ class WattWise(hass.Hass):
         self.charging_from_grid = False
         self.discharging_to_house = False
 
+        # Initialize forecast readiness flags
+        self.consumption_forecast_ready = False
+        self.solar_forecast_ready = False
+        self.price_forecast_ready = False
+
+        # Initialize forecast storage
+        self.consumption_forecast = []
+        self.solar_forecast = []
+        self.price_forecast = []
+
+        # Path to store consumption history
+        self.CONSUMPTION_HISTORY_FILE = "/config/apps/wattwise_consumption_history.json"
+
         # Fetch and set initial states from Home Assistant
         self.set_initial_states()
 
         # Schedule the optimization to run hourly at the top of the hour
-        now = self.datetime()
+        now = datetime.datetime.now(tzlocal.get_localzone())
         next_run = now.replace(minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run += datetime.timedelta(hours=1)
-        self.run_hourly(self.optimize_battery, next_run)
+        self.run_hourly(self.start_optimization_process, next_run)
         self.log(f"Scheduled hourly optimization starting at {next_run}.")
 
         # Listen for a custom event to trigger optimization manually
@@ -124,8 +146,8 @@ class WattWise(hass.Hass):
         switches from Home Assistant and initializes the tracking variables
         `charging_from_grid` and `discharging_to_house` accordingly.
         """
-        charger_state = self.get_state(self.BATTERY_CHARGER_SWITCH)
-        discharger_state = self.get_state(self.BATTERY_DISCHARGER_SWITCH)
+        charger_state = self.get_state(self.BATTERY_CHARGING_SWITCH)
+        discharger_state = self.get_state(self.BATTERY_DISCHARGING_SWITCH)
 
         if charger_state is not None:
             self.charging_from_grid = charger_state.lower() == "on"
@@ -148,14 +170,322 @@ class WattWise(hass.Hass):
             kwargs (dict): Additional keyword arguments.
         """
         self.log("Manual optimization trigger received.")
-        self.optimize_battery({})
+        self.start_optimization_process({})
+
+    def start_optimization_process(self, kwargs):
+        """
+        Starts the optimization process by fetching forecasts.
+
+        Args:
+            kwargs (dict): Additional keyword arguments.
+        """
+        self.consumption_forecast_ready = False
+        self.solar_forecast_ready = False
+        self.price_forecast_ready = False
+
+        self.consumption_forecast = []
+        self.solar_forecast = []
+        self.price_forecast = []
+
+        # Start fetching forecasts
+        self.get_consumption_forecast()
+        self.get_solar_production_forecast()
+        self.get_energy_price_forecast()
+
+    def get_consumption_forecast(self):
+        """
+        Retrieves the consumption forecast for the next T hours.
+
+        This method loads historical consumption data from a file, fetches any new data
+        from Home Assistant, updates the history, and calculates the average consumption
+        per hour over the past seven days.
+        """
+        self.log("Retrieving consumption forecast.")
+
+        # Load existing history
+        history_data = self.load_consumption_history()
+
+        # Determine the time window
+        now = datetime.datetime.now(tzlocal.get_localzone())
+        history_days_ago = now - datetime.timedelta(days=self.CONSUMPTION_HISTORY_DAYS)
+
+        # Remove data older than 7 days
+        history_data = [
+            entry
+            for entry in history_data
+            if datetime.datetime.fromisoformat(entry["last_changed"])
+            >= history_days_ago
+        ]
+
+        # Determine the last timestamp in history
+        if history_data:
+            last_timestamp = max(
+                datetime.datetime.fromisoformat(entry["last_changed"])
+                for entry in history_data
+            )
+        else:
+            last_timestamp = history_days_ago
+
+        # Fetch new data from last timestamp to now
+        new_data = self.get_history_data(self.CONSUMPTION_SENSOR, last_timestamp, now)
+
+        # Append new data to history
+        history_data.extend(new_data)
+
+        # Save updated history
+        self.save_consumption_history(history_data)
+
+        # Calculate average consumption per hour
+        hourly_consumption = {hour: [] for hour in range(24)}
+        for state in history_data:
+            timestamp_str = state.get("last_changed") or state.get("last_updated")
+            if timestamp_str is None:
+                continue
+            timestamp = datetime.datetime.fromisoformat(timestamp_str)
+            timestamp = timestamp.astimezone(
+                tzlocal.get_localzone()
+            )  # Convert to local time
+            hour = timestamp.hour
+            value_str = state.get("state", 0)
+            if self.is_float(value_str):
+                value = float(value_str)
+                hourly_consumption[hour].append(value)
+
+        # Compute average consumption for each hour
+        average_consumption = []
+        for t in range(self.T):
+            hour = (now + datetime.timedelta(hours=t)).hour
+            values = hourly_consumption.get(hour, [])
+            if values:
+                avg_consumption = sum(values) / len(values)
+            else:
+                avg_consumption = 0  # Default if no data
+            average_consumption.append(avg_consumption)
+
+        self.log(f"Consumption forecast retrieved: {average_consumption}")
+
+        # Store the forecast for use in optimization
+        self.consumption_forecast = average_consumption
+        self.consumption_forecast_ready = True
+
+        # Proceed with optimization if other forecasts are ready
+        self.check_and_run_optimization()
+
+    def load_consumption_history(self):
+        """
+        Loads the consumption history from a file.
+
+        Returns:
+            list: List of historical consumption data.
+        """
+        if os.path.exists(self.CONSUMPTION_HISTORY_FILE):
+            try:
+                with open(self.CONSUMPTION_HISTORY_FILE, "r") as f:
+                    filepath = os.path.abspath(self.CONSUMPTION_HISTORY_FILE)
+                    history_data = json.load(f)
+                    self.log(f"Loaded existing consumption history. Path: {filepath}")
+            except Exception as e:
+                self.error(f"Error loading consumption history: {e}")
+                history_data = []
+        else:
+            self.log("No existing consumption history found. Starting fresh.")
+            history_data = []
+        return history_data
+
+    def save_consumption_history(self, history_data):
+        """
+        Saves the consumption history to a file.
+
+        Args:
+            history_data (list): List of historical consumption data.
+        """
+        try:
+            with open(self.CONSUMPTION_HISTORY_FILE, "w") as f:
+                json.dump(history_data, f)
+                filepath = os.path.abspath(self.CONSUMPTION_HISTORY_FILE)
+                self.log(f"Consumption history saved. Path: {filepath}")
+        except Exception as e:
+            self.error(f"Error saving consumption history: {e}")
+
+    def get_history_data(self, entity_id, start_time, end_time):
+        """
+        Retrieves historical state changes for a given entity in one-hour intervals within the specified time range.
+
+        Args:
+            entity_id (str): The entity ID for which to retrieve history.
+            start_time (datetime.datetime): The start time for the history retrieval.
+            end_time (datetime.datetime): The end time for the history retrieval.
+
+        Returns:
+            list of dict: A list of state change dictionaries for the entity.
+        """
+        history_data = []
+        current_time = start_time
+
+        while current_time < end_time:
+            next_hour = current_time + datetime.timedelta(hours=1)
+            # Ensure we do not go past the end_time
+            if next_hour > end_time:
+                next_hour = end_time
+
+            # Convert current_time and next_hour to naive datetimes
+            current_time_naive = current_time.replace(tzinfo=None)
+            next_hour_naive = next_hour.replace(tzinfo=None)
+
+            try:
+                # Fetch history for the one-hour interval
+                hourly_data = self.get_history(
+                    entity_id=entity_id,
+                    start_time=current_time_naive,
+                    end_time=next_hour_naive,
+                    include_start_time_state=True,
+                )
+                if hourly_data:
+                    history_data.extend(hourly_data[0])
+            except Exception as e:
+                self.error(
+                    f"Error fetching history for {entity_id} from {current_time_naive} to {next_hour_naive}: {e}"
+                )
+
+            # Move to the next hour
+            current_time = next_hour
+
+        return history_data
+
+    def get_solar_production_forecast(self):
+        """
+        Retrieves the solar production forecast for the next T hours.
+
+        This method fetches the solar production forecast data from today's and
+        tomorrow's forecast sensors in Home Assistant. It combines the data and
+        maps it to the next T hours, adjusting for any forecast errors.
+        """
+        self.log("Retrieving solar production forecast.")
+        # Retrieve solar production forecast from Home Assistant entities
+        forecast_data_today = self.get_state(
+            self.SOLAR_FORECAST_SENSOR_TODAY, attribute="detailedHourly"
+        )
+        forecast_data_tomorrow = self.get_state(
+            self.SOLAR_FORECAST_SENSOR_TOMORROW, attribute="detailedHourly"
+        )
+
+        if not forecast_data_today:
+            self.error("Solar production forecast data for today is unavailable.")
+            self.solar_forecast_ready = False
+            return
+
+        if not forecast_data_tomorrow:
+            forecast_data_tomorrow = []
+            self.log(
+                "Solar production forecast data for tomorrow is not available yet."
+            )
+
+        # Combine today's and tomorrow's data
+        combined_forecast_data = forecast_data_today + forecast_data_tomorrow
+
+        solar_forecast = []
+        now = datetime.datetime.now(tzlocal.get_localzone())
+        for t in range(self.T):
+            forecast_time = now + datetime.timedelta(hours=t)
+            forecast_time = forecast_time.astimezone()
+            value = None
+            for entry in combined_forecast_data:
+                entry_time = datetime.datetime.fromisoformat(entry["period_start"])
+                entry_time = entry_time.astimezone()
+                if (
+                    entry_time.hour == forecast_time.hour
+                    and entry_time.date() == forecast_time.date()
+                ):
+                    value = entry["pv_estimate"]
+                    break
+            if value is None:
+                self.log(f"Solar production forecast for hour {t} not found.")
+                if self.T > t:
+                    self.T = t
+                self.log(f"Setting time horizon to {self.T} hours.")
+                break
+            solar_forecast.append(value)
+        self.log(f"Solar production forecast retrieved: {solar_forecast}")
+        self.solar_forecast = solar_forecast
+        self.solar_forecast_ready = True
+        self.check_and_run_optimization()
+
+    def get_energy_price_forecast(self):
+        """
+        Retrieves the energy price forecast for the next T hours.
+
+        This method fetches the energy price forecast data from Home Assistant's
+        price forecast sensor. It combines today's and tomorrow's data and maps
+        it to the next T hours, converting prices from EUR/kWh to ct/kWh.
+        """
+        self.log("Retrieving energy price forecast.")
+        # Retrieve energy price forecast from Home Assistant entity
+        price_data_today = self.get_state(self.PRICE_FORECAST_SENSOR, attribute="today")
+        price_data_tomorrow = self.get_state(
+            self.PRICE_FORECAST_SENSOR, attribute="tomorrow"
+        )
+
+        if not price_data_today:
+            self.error("Energy price forecast data for today is unavailable.")
+            self.price_forecast_ready = False
+            return
+
+        now = datetime.datetime.now(tzlocal.get_localzone())
+        current_hour = now.hour
+
+        # Combine today's and tomorrow's data
+        combined_price_data = price_data_today
+
+        if price_data_tomorrow:
+            combined_price_data += price_data_tomorrow
+            self.log(
+                "Tomorrow's energy price data is available and included in the forecast."
+            )
+        else:
+            self.log("Tomorrow's energy price data is not available yet.")
+
+        # Create the price forecast for the next T hours
+        price_forecast = []
+        for t in range(self.T):
+            index = current_hour + t
+            if index < len(combined_price_data):
+                price_entry = combined_price_data[index]
+                price = price_entry["total"] * 100  # Convert EUR/kWh to ct/kWh
+                price_forecast.append(price)
+            else:
+                # If we run out of data, use the last known price
+                price = combined_price_data[-1]["total"] * 100
+                self.log(
+                    f"Price data for hour {index} not found. Using last known price."
+                )
+                if self.T > t:
+                    self.T = t
+                self.log(f"Setting time horizon to {self.T} hours.")
+                break
+        self.log(f"Energy price forecast retrieved: {price_forecast}")
+        self.price_forecast = price_forecast
+        self.price_forecast_ready = True
+        self.check_and_run_optimization()
+
+    def check_and_run_optimization(self):
+        """
+        Checks if all forecasts are ready before proceeding with optimization.
+        """
+        if (
+            self.consumption_forecast_ready
+            and self.solar_forecast_ready
+            and self.price_forecast_ready
+        ):
+            self.log("All forecasts are ready. Starting optimization.")
+            self.run_in(self.optimize_battery, 0)
+        else:
+            self.log("Waiting for all forecasts to be ready...")
 
     def optimize_battery(self, kwargs):
         """
         Executes the battery optimization process.
 
-        This method retrieves the current state of charge, fetches forecasts for
-        consumption, solar production, and energy prices, formulates and solves
+        This method retrieves the current state of charge, formulates and solves
         an optimization problem to determine the optimal charging and discharging
         schedule, updates forecast sensors, and schedules charging/discharging actions.
 
@@ -164,9 +494,6 @@ class WattWise(hass.Hass):
 
         Returns:
             None
-
-        Raises:
-            RuntimeError: If the optimization problem does not find an optimal solution.
         """
         self.log("Starting battery optimization process.")
 
@@ -185,34 +512,17 @@ class WattWise(hass.Hass):
             f"Initial SoC: {SoC_0:.2f} kWh ({SoC_percentage}% of {self.BATTERY_CAPACITY} kWh)"
         )
 
-        T = self.TIME_HORIZON
-
-        # Get forecasts
-        C_t = self.get_consumption_forecast(T)
-        if C_t is None:
-            self.error(
-                "Consumption forecast data is unavailable. Aborting optimization."
-            )
-            return
-
-        S_t = self.get_solar_production_forecast(T)
-        if S_t is None:
-            self.error(
-                "Solar production forecast data is unavailable. Aborting optimization."
-            )
-            return
-
-        P_t = self.get_energy_price_forecast(T)
-        if P_t is None:
-            self.error(
-                "Energy price forecast data is unavailable. Aborting optimization."
-            )
-            return
+        # Use stored forecasts
+        C_t = self.consumption_forecast
+        S_t = self.solar_forecast
+        P_t = self.price_forecast
 
         # Log the forecasts per hour for debugging
         self.log("Forecasts per hour:")
-        now = self.datetime()  # Use AppDaemon's time-aware datetime
-        for t in range(T):
+        now = datetime.datetime.now(
+            tzlocal.get_localzone()
+        )  # Use AppDaemon's time-aware datetime
+        for t in range(self.T):
             forecast_time = now + datetime.timedelta(hours=t)
             hour = forecast_time.hour
             self.log(
@@ -227,33 +537,38 @@ class WattWise(hass.Hass):
         self.log("Optimization problem initialized.")
 
         # Decision variables
-        G = pulp.LpVariable.dicts("Grid_Import", (t for t in range(T)), lowBound=0)
+        G = pulp.LpVariable.dicts("Grid_Import", (t for t in range(self.T)), lowBound=0)
         Ch_solar = pulp.LpVariable.dicts(
-            "Battery_Charge_Solar", (t for t in range(T)), lowBound=0
+            "Battery_Charge_Solar", (t for t in range(self.T)), lowBound=0
         )
         Ch_grid = pulp.LpVariable.dicts(
-            "Battery_Charge_Grid", (t for t in range(T)), lowBound=0
+            "Battery_Charge_Grid", (t for t in range(self.T)), lowBound=0
         )
         Dch = pulp.LpVariable.dicts(
-            "Battery_Discharge", (t for t in range(T)), lowBound=0
+            "Battery_Discharge", (t for t in range(self.T)), lowBound=0
         )
         SoC = pulp.LpVariable.dicts(
-            "SoC", (t for t in range(T + 1)), lowBound=0, upBound=self.BATTERY_CAPACITY
+            "SoC",
+            (t for t in range(self.T + 1)),
+            lowBound=0,
+            upBound=self.BATTERY_CAPACITY,
         )
-        E = pulp.LpVariable.dicts("Grid_Export", (t for t in range(T)), lowBound=0)
+        E = pulp.LpVariable.dicts("Grid_Export", (t for t in range(self.T)), lowBound=0)
         Surplus_solar = pulp.LpVariable.dicts(
-            "Surplus_Solar", (t for t in range(T)), lowBound=0
+            "Surplus_Solar", (t for t in range(self.T)), lowBound=0
         )
         FullCharge = pulp.LpVariable.dicts(
-            "FullCharge", (t for t in range(T)), cat="Binary"
+            "FullCharge", (t for t in range(self.T)), cat="Binary"
         )  # Binary variables
         self.log("Decision variables created.")
 
         # Objective function: Minimize the total cost of grid imports and grid charging, minus value of final SoC
         P_end = np.mean(P_t)
         prob += (
-            pulp.lpSum([P_t[t] * G[t] - self.FEED_IN_TARIFF * E[t] for t in range(T)])
-            - P_end * SoC[T]
+            pulp.lpSum(
+                [P_t[t] * G[t] - self.FEED_IN_TARIFF * E[t] for t in range(self.T)]
+            )
+            - P_end * SoC[self.T]
         )
         self.log(
             "Objective function set to minimize total cost minus value of final SoC."
@@ -265,7 +580,7 @@ class WattWise(hass.Hass):
 
         M = self.BATTERY_CAPACITY * 2  # Big M value
 
-        for t in range(T):
+        for t in range(self.T):
             # Energy balance with corrected battery efficiency
             prob += (
                 (
@@ -293,12 +608,7 @@ class WattWise(hass.Hass):
                 Ch_solar[t] + Ch_grid[t] <= self.CHARGE_RATE_MAX,
                 f"Charge_Rate_Limit_{t}",
             )
-            prob += Ch_solar[t] <= self.CHARGE_RATE_MAX, f"Solar_Charge_Rate_Limit_{t}"
-            prob += (
-                Ch_solar[t] <= S_t[t],
-                f"Charge_Solar_Limit_Actual_Solar_{t}",
-            )  # Added constraint
-            prob += Ch_grid[t] <= self.CHARGE_RATE_MAX, f"Grid_Charge_Rate_Limit_{t}"
+            prob += Ch_solar[t] <= S_t[t], f"Charge_Solar_Limit_Actual_Solar_{t}"
 
             # Discharging limits
             prob += Dch[t] <= self.DISCHARGE_RATE_MAX, f"Discharge_Rate_Limit_{t}"
@@ -327,7 +637,7 @@ class WattWise(hass.Hass):
 
         # Solve the problem using a solver that supports MILP
         self.log("Starting the solver.")
-        solver = pulp.GLPK_CMD(msg=1)  # Removed invalid options
+        solver = pulp.GLPK_CMD(msg=1)
         prob.solve(solver)
         self.log(f"Solver status: {pulp.LpStatus[prob.status]}")
 
@@ -338,14 +648,14 @@ class WattWise(hass.Hass):
 
         # Extract the optimized charging schedule
         charging_schedule = []
-        now = self.datetime()  # Use time-aware datetime
-        for t in range(T):
+        now = datetime.datetime.now(tzlocal.get_localzone())  # Use time-aware datetime
+        for t in range(self.T):
             charge_solar = Ch_solar[t].varValue
             charge_grid = Ch_grid[t].varValue
             discharge = Dch[t].varValue
             export = E[t].varValue  # Grid export
             grid_import = G[t].varValue  # Grid import
-            soc = SoC[t + 1].varValue
+            soc = SoC[t].varValue
             consumption = C_t[t]  # House consumption from forecast
             solar = S_t[t]  # Solar production from forecast
             full_charge = FullCharge[t].varValue  # FullCharge status
@@ -401,9 +711,9 @@ class WattWise(hass.Hass):
             None
         """
         self.log(
-            "Scheduling charging and discharging actions based on wattwise's schedule."
+            "Scheduling charging and discharging actions based on WattWise's schedule."
         )
-        now = self.datetime()
+        now = datetime.datetime.now(tzlocal.get_localzone())
 
         for t, entry in enumerate(schedule):
             forecast_time = entry["time"]
@@ -453,16 +763,14 @@ class WattWise(hass.Hass):
             if entry["export"] > 0:
                 self.log(f"Exporting {entry['export']} kW to grid at {action_time}.")
                 # Implement export actions if necessary
-            else:
-                self.log(f"No export to grid scheduled at {action_time}.")
+            # else:
+            #     self.log(f"No export to grid scheduled at {action_time}.")
 
     def start_charging(self, kwargs):
         """
         Starts charging the battery from the grid.
 
-        This method turns on the battery charger switch. If the charger supports setting
-        a specific charge rate via a Home Assistant service, that functionality can be
-        implemented here.
+        This method turns on the battery charger switch.
 
         Args:
             kwargs (dict): Keyword arguments containing additional parameters.
@@ -475,11 +783,12 @@ class WattWise(hass.Hass):
         charge_rate = kwargs.get("charge_rate", self.CHARGE_RATE_MAX)
         self.log(f"Starting battery charging from grid at {charge_rate} kW.")
         # If your charger supports setting charge rate via service, implement it here.
-        # Example:
-        # self.call_service('charger/set_charge_rate', entity_id='charger.battery', rate=charge_rate)
 
         # Otherwise, simply turn on the charger switch
-        self.call_service("switch/turn_on", entity_id=self.BATTERY_CHARGER_SWITCH)
+        self.call_service(
+            "input_boolean/turn_on", entity_id=self.BATTERY_CHARGING_SWITCH
+        )
+        self.set_state(self.BINARY_SENSOR_CHARGING, state=1)
 
     def stop_charging(self, kwargs):
         """
@@ -495,7 +804,10 @@ class WattWise(hass.Hass):
             None
         """
         self.log("Stopping battery charging from grid.")
-        self.call_service("switch/turn_off", entity_id=self.BATTERY_CHARGER_SWITCH)
+        self.call_service(
+            "input_boolean/turn_off", entity_id=self.BATTERY_CHARGING_SWITCH
+        )
+        self.set_state(self.BINARY_SENSOR_CHARGING, state=0)
 
     def enable_discharging(self, kwargs):
         """
@@ -511,7 +823,10 @@ class WattWise(hass.Hass):
             None
         """
         self.log("Enabling battery discharging to the house.")
-        self.call_service("switch/turn_on", entity_id=self.BATTERY_DISCHARGER_SWITCH)
+        self.call_service(
+            "input_boolean/turn_on", entity_id=self.BATTERY_DISCHARGING_SWITCH
+        )
+        self.set_state(self.BINARY_SENSOR_DISCHARGING, state="on")
 
     def disable_discharging(self, kwargs):
         """
@@ -527,215 +842,10 @@ class WattWise(hass.Hass):
             None
         """
         self.log("Disabling battery discharging to the house.")
-        self.call_service("switch/turn_off", entity_id=self.BATTERY_DISCHARGER_SWITCH)
-
-    def get_consumption_forecast(self, T):
-        """
-        Retrieves the consumption forecast for the next T hours.
-
-        This method calculates the average consumption for each hour over the past
-        seven days to generate a forecast. It retrieves historical data from Home
-        Assistant and computes the average consumption per hour.
-
-        Args:
-            T (int): The number of hours to forecast.
-
-        Returns:
-            list of float: A list containing the forecasted consumption values for
-                           each hour. Returns None if data retrieval fails.
-        """
-        self.log("Retrieving consumption forecast.")
-        # Calculate average consumption over the last 7 days for each hour
-        consumption = []
-        now = datetime.datetime.now()
-        for t in range(T):
-            hour = (now + datetime.timedelta(hours=t)).hour
-            total = 0
-            count = 0
-            for days_back in range(1, 8):  # Last 7 days
-                past_date = now - datetime.timedelta(days=days_back)
-                start_time = past_date.replace(
-                    hour=hour, minute=0, second=0, microsecond=0
-                )
-                end_time = start_time + datetime.timedelta(hours=1)
-                history = self.get_history(
-                    self.CONSUMPTION_SENSOR, start_time, end_time
-                )
-                if history:
-                    values = [
-                        float(state.get("state", 0))
-                        for state in history
-                        if self.is_float(state.get("state", 0))
-                    ]
-                    if values:
-                        avg_value = sum(values) / len(values)
-                        total += avg_value
-                        count += 1
-            if count > 0:
-                avg_consumption = total / count
-            else:
-                avg_consumption = 0  # Default if no data
-            consumption.append(avg_consumption)
-        self.log(f"Consumption forecast retrieved: {consumption}")
-        return consumption
-
-    def get_solar_production_forecast(self, T):
-        """
-        Retrieves the solar production forecast for the next T hours.
-
-        This method fetches the solar production forecast data from today's and
-        tomorrow's forecast sensors in Home Assistant. It combines the data and
-        maps it to the next T hours, adjusting for any forecast errors.
-
-        Args:
-            T (int): The number of hours to forecast.
-
-        Returns:
-            list of float: A list containing the forecasted solar production values
-                           for each hour. Returns None if data retrieval fails.
-        """
-        self.log("Retrieving solar production forecast.")
-        # Retrieve solar production forecast from Home Assistant entities
-        forecast_data_today = self.get_state(
-            self.SOLAR_FORECAST_SENSOR_TODAY, attribute="detailedHourly"
+        self.call_service(
+            "input_boolean/turn_off", entity_id=self.BATTERY_DISCHARGING_SWITCH
         )
-        forecast_data_tomorrow = self.get_state(
-            self.SOLAR_FORECAST_SENSOR_TOMORROW, attribute="detailedHourly"
-        )
-
-        if not forecast_data_today:
-            self.error("Solar production forecast data for today is unavailable.")
-            return None
-
-        if not forecast_data_tomorrow:
-            forecast_data_tomorrow = []
-            self.log(
-                "Solar production forecast data for tomorrow is not available yet."
-            )
-
-        # Combine today's and tomorrow's data
-        combined_forecast_data = forecast_data_today + forecast_data_tomorrow
-
-        solar_forecast = []
-        now = datetime.datetime.now(pytz.utc)
-        for t in range(T):
-            forecast_time = now + datetime.timedelta(hours=t)
-            forecast_time = forecast_time.astimezone()
-            value = None
-            for entry in combined_forecast_data:
-                entry_time = datetime.datetime.fromisoformat(entry["period_start"])
-                entry_time = entry_time.astimezone()
-                if (
-                    entry_time.hour == forecast_time.hour
-                    and entry_time.date() == forecast_time.date()
-                ):
-                    value = entry["pv_estimate"] * 1.0  # Adjust for -10% forecast error
-                    break
-            if value is None:
-                value = 0  # Default if no forecast available
-            solar_forecast.append(value)
-        self.log(f"Solar production forecast retrieved: {solar_forecast}")
-        return solar_forecast
-
-    def get_energy_price_forecast(self, T):
-        """
-        Retrieves the energy price forecast for the next T hours.
-
-        This method fetches the energy price forecast data from Home Assistant's
-        price forecast sensor. It combines today's and tomorrow's data and maps
-        it to the next T hours, converting prices from EUR/kWh to ct/kWh.
-
-        Args:
-            T (int): The number of hours to forecast.
-
-        Returns:
-            list of float: A list containing the forecasted energy prices for
-                           each hour in ct/kWh. Returns None if data retrieval fails.
-        """
-        self.log("Retrieving energy price forecast.")
-        # Retrieve energy price forecast from Home Assistant entity
-        price_data_today = self.get_state(self.PRICE_FORECAST_SENSOR, attribute="today")
-        price_data_tomorrow = self.get_state(
-            self.PRICE_FORECAST_SENSOR, attribute="tomorrow"
-        )
-
-        if not price_data_today:
-            self.error("Energy price forecast data for today is unavailable.")
-            return None
-
-        now = datetime.datetime.now()
-        current_hour = now.hour
-
-        # Combine today's and tomorrow's data
-        combined_price_data = price_data_today
-
-        if price_data_tomorrow:
-            combined_price_data += price_data_tomorrow
-            self.log(
-                "Tomorrow's energy price data is available and included in the forecast."
-            )
-        else:
-            self.log("Tomorrow's energy price data is not available yet.")
-
-        # Create the price forecast for the next T hours
-        price_forecast = []
-        for t in range(T):
-            index = current_hour + t
-            if index < len(combined_price_data):
-                price_entry = combined_price_data[index]
-                price = price_entry["total"] * 100  # Convert EUR/kWh to ct/kWh
-            else:
-                # If we run out of data, use the last known price
-                price = combined_price_data[-1]["total"] * 100
-                self.log(
-                    f"Price data for hour {index} not found. Using last known price."
-                )
-            price_forecast.append(price)
-
-        self.log(f"Energy price forecast retrieved: {price_forecast}")
-        return price_forecast
-
-    def get_history(self, entity_id, start_time, end_time):
-        """
-        Retrieves historical state changes for a given entity within a specified time range.
-
-        This method makes an API call to Home Assistant to fetch historical data
-        for the specified entity between `start_time` and `end_time`.
-
-        Args:
-            entity_id (str): The entity ID for which to retrieve history.
-            start_time (datetime.datetime): The start time for the history retrieval.
-            end_time (datetime.datetime): The end time for the history retrieval.
-
-        Returns:
-            list of dict: A list of state change dictionaries for the entity.
-                          Returns an empty list if no history is found or an error occurs.
-        """
-        self.log(f"Retrieving history for {entity_id} from {start_time} to {end_time}.")
-        url = f"{self.ha_url}/api/history/period/{start_time.isoformat()}"
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
-        params = {
-            "filter_entity_id": entity_id,
-            "end_time": end_time.isoformat(),
-            "minimal_response": "true",
-        }
-        try:
-            response = requests.get(url, headers=headers, params=params, timeout=10)
-            response.raise_for_status()
-            history = response.json()
-            if history and len(history) > 0:
-                return history[0]  # Returns a list of state changes
-            else:
-                self.log(
-                    f"No history found for {entity_id} in the specified time range."
-                )
-                return []
-        except requests.exceptions.RequestException as e:
-            self.error(f"Error retrieving history: {e}")
-            return []
+        self.set_state(self.BINARY_SENSOR_DISCHARGING, state="off")
 
     def update_forecast_sensors(
         self, charging_schedule, consumption_forecast, solar_forecast
@@ -762,21 +872,21 @@ class WattWise(hass.Hass):
         self.log("Updating forecast sensors with optimization results.")
 
         forecasts = {
-            "sensor.wattwise_battery_charge_from_solar": [],
-            "sensor.wattwise_battery_charge_from_grid": [],
-            "sensor.wattwise_battery_discharge": [],
-            "sensor.wattwise_grid_export": [],
-            "sensor.wattwise_grid_import": [],
-            "sensor.wattwise_state_of_charge": [],
-            "sensor.wattwise_state_of_charge_percentage": [],
-            "sensor.wattwise_consumption_forecast": [],
-            "sensor.wattwise_solar_production_forecast": [],
-            "sensor.wattwise_battery_full_charge_status": [],
-            "binary_sensor.wattwise_battery_charging_from_grid": [],
-            "binary_sensor.wattwise_battery_discharging_enabled": [],
+            self.SENSOR_CHARGE_SOLAR: [],
+            self.SENSOR_CHARGE_GRID: [],
+            self.SENSOR_DISCHARGE: [],
+            self.SENSOR_GRID_EXPORT: [],
+            self.SENSOR_GRID_IMPORT: [],
+            self.SENSOR_SOC: [],
+            self.SENSOR_SOC_PERCENTAGE: [],
+            self.SENSOR_CONSUMPTION_FORECAST: [],
+            self.SENSOR_SOLAR_PRODUCTION_FORECAST: [],
+            self.SENSOR_FULL_CHARGE_STATUS: [],
+            self.BINARY_SENSOR_CHARGING: [],
+            self.BINARY_SENSOR_DISCHARGING: [],
         }
 
-        now = self.datetime()
+        now = datetime.datetime.now(tzlocal.get_localzone())
 
         # Build the forecast data
         for t, entry in enumerate(charging_schedule):
@@ -791,40 +901,34 @@ class WattWise(hass.Hass):
             soc_percentage = (entry["soc"] / self.BATTERY_CAPACITY) * 100
 
             # Append data to forecasts
-            forecasts["sensor.wattwise_battery_charge_from_solar"].append(
+            forecasts[self.SENSOR_CHARGE_SOLAR].append(
                 [timestamp_iso, entry["charge_solar"]]
             )
-            forecasts["sensor.wattwise_battery_charge_from_grid"].append(
+            forecasts[self.SENSOR_CHARGE_GRID].append(
                 [timestamp_iso, entry["charge_grid"]]
             )
-            forecasts["sensor.wattwise_battery_discharge"].append(
-                [timestamp_iso, entry["discharge"]]
-            )
-            forecasts["sensor.wattwise_grid_export"].append(
-                [timestamp_iso, entry["export"]]
-            )
-            forecasts["sensor.wattwise_grid_import"].append(
+            forecasts[self.SENSOR_DISCHARGE].append([timestamp_iso, entry["discharge"]])
+            forecasts[self.SENSOR_GRID_EXPORT].append([timestamp_iso, entry["export"]])
+            forecasts[self.SENSOR_GRID_IMPORT].append(
                 [timestamp_iso, entry["grid_import"]]
             )
-            forecasts["sensor.wattwise_state_of_charge"].append(
-                [timestamp_iso, entry["soc"]]
-            )
-            forecasts["sensor.wattwise_state_of_charge_percentage"].append(
+            forecasts[self.SENSOR_SOC].append([timestamp_iso, entry["soc"]])
+            forecasts[self.SENSOR_SOC_PERCENTAGE].append(
                 [timestamp_iso, soc_percentage]
             )
-            forecasts["sensor.wattwise_battery_full_charge_status"].append(
+            forecasts[self.SENSOR_FULL_CHARGE_STATUS].append(
                 [timestamp_iso, entry["full_charge"]]
             )
-            forecasts["binary_sensor.wattwise_battery_charging_from_grid"].append(
+            forecasts[self.BINARY_SENSOR_CHARGING].append(
                 [timestamp_iso, "on" if desired_charging else "off"]
             )
-            forecasts["binary_sensor.wattwise_battery_discharging_enabled"].append(
+            forecasts[self.BINARY_SENSOR_DISCHARGING].append(
                 [timestamp_iso, "on" if desired_discharging else "off"]
             )
-            forecasts["sensor.wattwise_consumption_forecast"].append(
+            forecasts[self.SENSOR_CONSUMPTION_FORECAST].append(
                 [timestamp_iso, consumption_forecast[t]]
             )
-            forecasts["sensor.wattwise_solar_production_forecast"].append(
+            forecasts[self.SENSOR_SOLAR_PRODUCTION_FORECAST].append(
                 [timestamp_iso, solar_forecast[t]]
             )
 
@@ -848,7 +952,7 @@ class WattWise(hass.Hass):
             self.set_state(
                 sensor_id, state=current_value, attributes={"forecast": data}
             )
-            self.log(f"Updated {sensor_id} with current value and forecast data.")
+            # self.log(f"Updated {sensor_id} with current value and forecast data.")
 
     def is_float(self, value):
         """
