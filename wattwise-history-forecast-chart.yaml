@@ -1,0 +1,368 @@
+type: custom:card-templater
+card:
+  type: custom:apexcharts-card
+  graph_span_template: "{{(states('sensor.wattwise_forecast_horizon') | int) + 23 }}h"
+  apex_config:
+    chart:
+      height: 400px
+  experimental:
+    hidden_by_default: true
+  span:
+    start: hour
+    offset: "-1day"
+  all_series_config:
+    stroke_width: 2
+    show:
+      legend_value: false
+  header:
+    show: true
+    title: History/Forecast
+  now:
+    show: true
+    label: now
+  yaxis:
+    - id: kWh
+      show: true
+      decimals: 0
+      apex_config:
+        tickAmount: 11
+    - id: ct
+      show: true
+      opposite: true
+      decimals: 0
+      apex_config:
+        tickAmount: 4
+  series:
+    - entity: sensor.wattwise_battery_charge_from_solar
+      name: Charge/Solar (forecast)
+      type: line
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: skyblue
+    - entity: sensor.wattwise_battery_charge_from_solar
+      name: Charge/Solar (forecast*)
+      type: line
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      color: skyblue
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.wattwise_battery_charge_from_grid
+      name: Charge/Grid (forecast)
+      type: line
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: steelblue
+    - entity: sensor.wattwise_battery_charge_from_grid
+      name: Charge/Grid (forecast*)
+      type: line
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      color: steelblue
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.s10x_battery_charge
+      name: Charge (actual)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      color: steelblue
+      stroke_dash: 2
+      group_by:
+        func: avg
+        duration: 1h
+    - entity: sensor.wattwise_battery_discharge
+      name: Discharge (forecast)
+      type: line
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: lightsalmon
+    - entity: sensor.wattwise_battery_discharge
+      name: Discharge (forecast*)
+      type: line
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      color: lightsalmon
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.s10x_battery_discharge
+      name: Discharge (actual)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      color: lightsalmon
+      stroke_dash: 2
+      group_by:
+        func: avg
+        duration: 1h
+    - entity: sensor.wattwise_grid_export
+      name: Export (forecast)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: plum
+    - entity: sensor.wattwise_grid_export
+      name: Export (forecast*)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      color: plum
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.s10x_export_to_grid
+      name: Export (actual)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      color: plum
+      stroke_dash: 2
+      group_by:
+        func: avg
+        duration: 1h
+    - entity: sensor.wattwise_grid_import
+      name: Import (forecast)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: tomato
+    - entity: sensor.wattwise_grid_import
+      name: Import (forecast*)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      color: tomato
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.s10x_consumption_from_grid
+      name: Import (actual)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      color: tomato
+      stroke_dash: 2
+      group_by:
+        func: avg
+        duration: 1h
+    - entity: sensor.s10x_state_of_charge
+      name: SoC (actual)
+      yaxis_id: kWh
+      unit: kWh
+      transform: return x / 100 * 11.2;
+      extend_to: false
+      color: lawngreen
+      stroke_dash: 2
+      group_by:
+        func: avg
+        duration: 1h
+    - entity: sensor.wattwise_state_of_charge
+      name: SoC (forecast)
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: lawngreen
+    - entity: sensor.wattwise_state_of_charge
+      name: SoC (forecast*)
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      color: lawngreen
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.s10x_house_consumption
+      name: Consumption (actual)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      group_by:
+        func: avg
+        duration: 1h
+      color: aquamarine
+      stroke_dash: 2
+    - entity: sensor.wattwise_consumption_forecast
+      name: Consumption (forecast)
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: aquamarine
+    - entity: sensor.wattwise_consumption_forecast
+      name: Consumption (forecast*)
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      color: aquamarine
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.wattwise_solar_production_forecast
+      name: Production (forecast)
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+      color: goldenrod
+    - entity: sensor.wattwise_solar_production_forecast
+      name: Production (forecast*)
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      color: goldenrod
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.s10x_solar_production
+      name: Production (actual)
+      yaxis_id: kWh
+      unit: kW
+      extend_to: false
+      group_by:
+        func: avg
+        duration: 1h
+      color: goldenrod
+      stroke_dash: 2
+    - entity: sensor.wattwise_maximum_discharge_possible
+      name: Max Discharge possible
+      type: line
+      curve: stepline
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      show:
+        hidden_by_default: true
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          return [new Date(item[0]).getTime(), item[1]];
+        });
+    - entity: sensor.wattwise_maximum_discharge_possible
+      name: Max Discharge possible*
+      type: line
+      curve: stepline
+      yaxis_id: kWh
+      unit: kWh
+      extend_to: false
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: binary_sensor.wattwise_battery_discharging_enabled
+      name: Discharging Enabled (forecast)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      color: hotpink
+      show:
+        hidden_by_default: true
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          const value = item[1] === 'on' ? 1 : 0;
+          return [new Date(item[0]).getTime(), value];
+        });
+      yaxis_id: kWh
+    - entity: binary_sensor.wattwise_battery_discharging_enabled
+      name: Discharging Enabled (forecast*)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      yaxis_id: kWh
+      color: hotpink
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: binary_sensor.wattwise_battery_charging_from_grid
+      name: Charge/Grid Enabled (forecast)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      color: royalblue
+      show:
+        hidden_by_default: true
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          const value = item[1] === 'on' ? 1 : 0;
+          return [new Date(item[0]).getTime(), value];
+        });
+      yaxis_id: kWh
+    - entity: binary_sensor.wattwise_battery_charging_from_grid
+      name: Charge/Grid Enabled (forecast*)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      yaxis_id: kWh
+      color: royalblue
+      opacity: 0.2
+      show:
+        hidden_by_default: true
+    - entity: sensor.tibber_prices
+      yaxis_id: ct
+      name: Price
+      color: mediumslateblue
+      unit: ct
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      float_precision: 2
+      show:
+        hidden_by_default: true
+      data_generator: >
+        const noon = new Date()
+
+        noon.setHours(0, 0, 0, 0)
+
+        const prices =
+        entity.attributes.today.concat(entity.attributes.tomorrow);
+
+        const data = [];
+
+        for(let i = 0; i < prices.length; i++) {
+          data.push([noon.getTime() + i * 1000 * 3600, prices[i].total * 100])
+        }
+
+        return data;
+entities:
+  - sensor.wattwise_forecast_horizon

@@ -22,6 +22,8 @@ import os
 import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
 import pulp
+import pytz
+import requests
 import tzlocal
 
 
@@ -46,9 +48,10 @@ class WattWise(hass.Hass):
         self.BATTERY_EFFICIENCY = 0.9
         self.CHARGE_RATE_MAX = 6  # kW
         self.DISCHARGE_RATE_MAX = 6  # kW
-        self.TIME_HORIZON = 24  # hours
+        self.TIME_HORIZON = 48  # hours
         self.FEED_IN_TARIFF = 7  # ct/kWh
         self.CONSUMPTION_HISTORY_DAYS = 7  # days
+        self.LOWER_BATTERY_LIMIT = 1.0  # kWh
 
         # Constants for Home Assistant Entity IDs
         self.CONSUMPTION_SENSOR = "sensor.s10x_house_consumption"
@@ -88,6 +91,11 @@ class WattWise(hass.Hass):
             "sensor.wattwise_solar_production_forecast"
         )
         self.SENSOR_FULL_CHARGE_STATUS = "sensor.wattwise_battery_full_charge_status"
+        self.SENSOR_MAX_POSSIBLE_DISCHARGE = (
+            "sensor.wattwise_maximum_discharge_possible"
+        )
+        self.SENSOR_FORECAST_HORIZON = "sensor.wattwise_forecast_horizon"
+        self.SENSOR_HISTORY_HORIZON = "sensor.wattwise_history_horizon"
 
         # Usable Time Horizon
         self.T = self.TIME_HORIZON
@@ -123,7 +131,7 @@ class WattWise(hass.Hass):
         self.set_initial_states()
 
         # Schedule the optimization to run hourly at the top of the hour
-        now = datetime.datetime.now(tzlocal.get_localzone())
+        now = self.get_now_time()
         next_run = now.replace(minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run += datetime.timedelta(hours=1)
@@ -186,6 +194,7 @@ class WattWise(hass.Hass):
         self.price_forecast = []
 
         # Start fetching forecasts
+        self.T = self.TIME_HORIZON  # Reset T before each run.
         self.get_consumption_forecast()
         self.get_solar_production_forecast()
         self.get_energy_price_forecast()
@@ -204,7 +213,7 @@ class WattWise(hass.Hass):
         history_data = self.load_consumption_history()
 
         # Determine the time window
-        now = datetime.datetime.now(tzlocal.get_localzone())
+        now = self.get_now_time()
         history_days_ago = now - datetime.timedelta(days=self.CONSUMPTION_HISTORY_DAYS)
 
         # Remove data older than 7 days
@@ -382,7 +391,7 @@ class WattWise(hass.Hass):
         combined_forecast_data = forecast_data_today + forecast_data_tomorrow
 
         solar_forecast = []
-        now = datetime.datetime.now(tzlocal.get_localzone())
+        now = self.get_now_time()
         for t in range(self.T):
             forecast_time = now + datetime.timedelta(hours=t)
             forecast_time = forecast_time.astimezone()
@@ -428,7 +437,7 @@ class WattWise(hass.Hass):
             self.price_forecast_ready = False
             return
 
-        now = datetime.datetime.now(tzlocal.get_localzone())
+        now = self.get_now_time()
         current_hour = now.hour
 
         # Combine today's and tomorrow's data
@@ -517,9 +526,7 @@ class WattWise(hass.Hass):
 
         # Log the forecasts per hour for debugging
         self.log("Forecasts per hour:")
-        now = datetime.datetime.now(
-            tzlocal.get_localzone()
-        )  # Use AppDaemon's time-aware datetime
+        now = self.get_now_time()
         for t in range(self.T):
             forecast_time = now + datetime.timedelta(hours=t)
             hour = forecast_time.hour
@@ -572,6 +579,14 @@ class WattWise(hass.Hass):
             "Objective function set to minimize total cost minus value of final SoC."
         )
 
+        # Objective function: Minimize the total cost of grid imports and grid charging.
+        # prob += (
+        #    pulp.lpSum([P_t[t] * G[t] - self.FEED_IN_TARIFF * E[t] for t in range(self.T)])
+        # )
+        # self.log(
+        #    "Objective function set to minimize total cost."
+        # )
+
         # Initial SoC
         prob += SoC[0] == SoC_0
         self.log("Initial SoC constraint added.")
@@ -598,7 +613,7 @@ class WattWise(hass.Hass):
             )
 
             # Battery capacity constraints
-            prob += SoC[t + 1] >= 0, f"SoC_Min_{t}"
+            prob += SoC[t + 1] >= self.LOWER_BATTERY_LIMIT, f"SoC_Min_{t}"
             prob += SoC[t + 1] <= self.BATTERY_CAPACITY, f"SoC_Max_{t}"
 
             # Charging limits
@@ -646,7 +661,7 @@ class WattWise(hass.Hass):
 
         # Extract the optimized charging schedule
         charging_schedule = []
-        now = datetime.datetime.now(tzlocal.get_localzone())  # Use time-aware datetime
+        now = self.get_now_time()
         for t in range(self.T):
             charge_solar = Ch_solar[t].varValue
             charge_grid = Ch_grid[t].varValue
@@ -685,8 +700,15 @@ class WattWise(hass.Hass):
                 }
             )
 
+        # Compute the maximum possible discharge per hour
+        max_discharge_possible = self.calculate_max_discharge_possible(
+            charging_schedule
+        )
+
         # Update forecast sensors with the optimization results
-        self.update_forecast_sensors(charging_schedule, C_t, S_t)
+        self.update_forecast_sensors(
+            charging_schedule, C_t, S_t, max_discharge_possible
+        )
 
         # Schedule actions based on the optimized schedule
         self.schedule_actions(charging_schedule)
@@ -711,7 +733,7 @@ class WattWise(hass.Hass):
         self.log(
             "Scheduling charging and discharging actions based on WattWise's schedule."
         )
-        now = datetime.datetime.now(tzlocal.get_localzone())
+        now = self.get_now_time()
 
         for t, entry in enumerate(schedule):
             forecast_time = entry["time"]
@@ -845,8 +867,56 @@ class WattWise(hass.Hass):
         )
         self.set_state(self.BINARY_SENSOR_DISCHARGING, state="off")
 
+    def calculate_max_discharge_possible(self, charging_schedule):
+        """
+        Calculates the maximum possible discharge per hour without increasing grid consumption,
+        based on the SoC changes and discharging actions.
+
+        Args:
+            charging_schedule (list): The optimized charging schedule.
+
+        Returns:
+            list: A list containing the maximum possible discharge for each hour.
+        """
+        max_discharge_possible = []
+        SoC_future = [entry["soc"] for entry in charging_schedule]
+        discharge_schedule = [entry["discharge"] for entry in charging_schedule]
+        export_schedule = [entry["export"] for entry in charging_schedule]
+        T = len(charging_schedule)
+
+        for t in range(T):
+            SoC_current = SoC_future[t]
+            if t < T - 1:
+                SoC_next = SoC_future[t + 1]
+            else:
+                # For the last time step, assume SoC remains the same
+                SoC_next = SoC_current
+
+            if SoC_next > SoC_current or export_schedule[t] > 0:
+                # SoC is increasing
+                max_discharge = SoC_current
+            else:
+                # SoC is constant or decreasing
+                if discharge_schedule[t] > 0:
+                    max_discharge = SoC_current
+                else:
+                    max_discharge = 0
+
+            # Ensure max_discharge does not exceed current SoC and discharge rate limits
+            max_discharge = max(
+                0, min(max_discharge, self.DISCHARGE_RATE_MAX, SoC_current)
+            )
+
+            max_discharge_possible.append(max_discharge)
+
+        return max_discharge_possible
+
     def update_forecast_sensors(
-        self, charging_schedule, consumption_forecast, solar_forecast
+        self,
+        charging_schedule,
+        consumption_forecast,
+        solar_forecast,
+        max_discharge_possible,
     ):
         """
         Updates Home Assistant sensors with forecast data for visualization.
@@ -882,9 +952,10 @@ class WattWise(hass.Hass):
             self.SENSOR_FULL_CHARGE_STATUS: [],
             self.BINARY_SENSOR_CHARGING: [],
             self.BINARY_SENSOR_DISCHARGING: [],
+            self.SENSOR_MAX_POSSIBLE_DISCHARGE: [],
         }
 
-        now = datetime.datetime.now(tzlocal.get_localzone())
+        now = self.get_now_time()
 
         # Build the forecast data
         for t, entry in enumerate(charging_schedule):
@@ -929,7 +1000,9 @@ class WattWise(hass.Hass):
             forecasts[self.SENSOR_SOLAR_PRODUCTION_FORECAST].append(
                 [timestamp_iso, solar_forecast[t]]
             )
-
+            forecasts[self.SENSOR_MAX_POSSIBLE_DISCHARGE].append(
+                [timestamp_iso, max_discharge_possible[t]]
+            )
         # Update sensors
         for sensor_id, data in forecasts.items():
             # Get the current value for the sensor's state
@@ -951,6 +1024,14 @@ class WattWise(hass.Hass):
                 sensor_id, state=current_value, attributes={"forecast": data}
             )
             # self.log(f"Updated {sensor_id} with current value and forecast data.")
+
+        # Update the Forecast Time Horizon
+        self.set_state(self.SENSOR_FORECAST_HORIZON, state=self.T)
+
+    def get_now_time(self):
+        now = datetime.datetime.now(tzlocal.get_localzone())
+        now_hour = now.replace(minute=0, second=0, microsecond=0)
+        return now_hour
 
     def is_float(self, value):
         """
