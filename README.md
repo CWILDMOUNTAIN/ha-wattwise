@@ -7,32 +7,32 @@ WattWise is an AppDaemon application for [Home Assistant](https://www.home-assis
 
 ## Table of Contents 
  
-- [Features](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#features)
+- [Features](README.md#features)
  
-- [How It Works](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#how-it-works)
+- [How It Works](README.md#how-it-works)
  
-- [Getting Started](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#getting-started)  
-  - [Prerequisites](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#prerequisites)
+- [Getting Started](README.md#getting-started)  
+  - [Prerequisites](README.md#prerequisites)
  
-  - [Installation](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#installation)
+  - [Installation](README.md#installation)
  
-- [Configuration](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#configuration)  
-  - [Home Assistant Setup](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#home-assistant-setup)
+- [Configuration](README.md#configuration)  
+  - [Home Assistant Setup](README.md#home-assistant-setup)
  
-  - [AppDaemon Setup](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#appdaemon-setup)
+  - [AppDaemon Setup](README.md#appdaemon-setup)
  
-  - [Customizing WattWise](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#customizing-wattwise)
+  - [Customizing WattWise](README.md#customizing-wattwise)
  
-- [Usage](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#usage)  
-  - [Visualizing Forecasts](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#visualizing-forecasts)
+- [Usage](README.md#usage)  
+  - [Visualizing Forecasts](README.md#visualizing-forecasts)
  
 - [Contributing]()
  
-- [License](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#license)
+- [License](README.md#license)
  
-- [Contact](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#contact)
+- [Contact](README.md#contact)
  
-- [Acknowledgements](https://chatgpt.com/c/6703ba73-6984-8009-874b-94029eb4ff48#acknowledgements)
+- [Acknowledgements](README.md#acknowledgements)
 
 ## Features 
  
