@@ -110,7 +110,7 @@ The script expects the forecast information in the format provided by [Solcast](
    
    Under Settings --> Add-Ons --> AppDaemon --> Configuration:
      * Add System Packages: `musl-dev`, `gcc`, `glpk`
-     * Add Python Packages: `pulp`, `numpy==1.26.4`, `requests`, `pytz`, `tzlocal`
+     * Add Python Packages: `pulp`, `numpy==1.26.4`, `tzlocal`
  
 2. **Set up WattWise in AppDaemon**  
   * Place `wattwise.py` (the WattWise script) is placed in your AppDaemon apps directory (e.g., `/root/addon_configs/a0d7b954_appdaemon/apps/`).

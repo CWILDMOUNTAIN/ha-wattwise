@@ -22,8 +22,6 @@ import os
 import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
 import pulp
-import pytz
-import requests
 import tzlocal
 
 
