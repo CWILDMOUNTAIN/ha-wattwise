@@ -29,7 +29,7 @@ rest:
   - resource: https://api.tibber.com/v1-beta/gql
     method: POST
     payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total level } today { total level } tomorrow { total level } } } } } }" }'
-    scan_interval: 30
+    scan_interval: 60
     headers:
       Authorization: !secret tibber_token
       Content-Type: application/json
