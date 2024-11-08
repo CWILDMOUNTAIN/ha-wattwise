@@ -67,7 +67,7 @@ class WattWise(hass.Hass):
             "sensor.solcast_pv_forecast_prognose_morgen",
         )
         self.PRICE_FORECAST_SENSOR = self.args.get(
-            "price_forecast_sensor", "sensor.tibber_prices"
+            "price_forecast_sensor", "sensor.wattwise_tibber_prices"
         )
         self.BATTERY_SOC_SENSOR = self.args.get(
             "battery_soc_sensor", "sensor.s10x_state_of_charge"

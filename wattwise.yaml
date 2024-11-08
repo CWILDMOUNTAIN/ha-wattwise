@@ -25,6 +25,25 @@ automation:
         data: {}
     mode: single
 
+rest:
+  - resource: https://api.tibber.com/v1-beta/gql
+    method: POST
+    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total level } today { total level } tomorrow { total level } } } } } }" }'
+    scan_interval: 30
+    headers:
+      Authorization: !secret tibber_token
+      Content-Type: application/json
+      User-Agent: REST
+    sensor:
+      name: WattWise Tibber Prices
+      unique_id: wattwise_tibber_prices
+      unit_of_measurement: EUR/kWh
+      json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
+      value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
+      json_attributes:
+        - today
+        - tomorrow
+
 template:
   - sensor:
       - name: "WattWise Battery Charge from Solar"

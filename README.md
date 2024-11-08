@@ -93,7 +93,11 @@ WattWise leverages linear programming to optimize the charging and discharging s
  
 - **HA Solcast PV Solar Forecast Integration** : Installed via HACS and configured, so that you get an accurate PV production forecast. The script expects the forecast information in the format provided by [Solcast](https://github.com/BJReplay/ha-solcast-solar) .
  
-- **Tibber Integration** : Installed and configured via the [official HA integration](https://www.home-assistant.io/integrations/tibber/) . The script expects the price information in the format provided by Tibber.
+- **Tibber API Token** : You need an API Token from Tibber to fetch your energy price forecast. You can get your token from [Tibber's Dev Portal](https://developer.tibber.com/settings/access-token). Place your token in ``config/secrets.yaml`` like this:
+
+```
+tibber_token: abcd1234efgh5678ijkl9012mnop3456qrst7890uvw
+```
  
 - **AppDaemon** :
   - Search for the “AppDaemon 4” add-on in the Home Assistant add-on store and install it.

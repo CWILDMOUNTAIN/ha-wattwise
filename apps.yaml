@@ -15,5 +15,5 @@ wattwise:
   consumption_sensor: "sensor.s10x_house_consumption"
   solar_forecast_sensor_today: "sensor.solcast_pv_forecast_prognose_heute"
   solar_forecast_sensor_tomorrow: "sensor.solcast_pv_forecast_prognose_morgen"
-  price_forecast_sensor: "sensor.tibber_prices"
+  price_forecast_sensor: "sensor.wattwise_tibber_prices"
   battery_soc_sensor: "sensor.s10x_state_of_charge"
