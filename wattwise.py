@@ -77,23 +77,25 @@ class WattWise(hass.Hass):
         )
 
         # Constants for Forecast Sensors - No need to touch.
-        self.SENSOR_CHARGE_SOLAR = "sensor.wattwise_battery_charge_from_solar"
-        self.SENSOR_CHARGE_GRID = "sensor.wattwise_battery_charge_from_grid"
-        self.SENSOR_DISCHARGE = "sensor.wattwise_battery_discharge"
-        self.SENSOR_GRID_EXPORT = "sensor.wattwise_grid_export"
-        self.SENSOR_GRID_IMPORT = "sensor.wattwise_grid_import"
-        self.SENSOR_SOC = "sensor.wattwise_state_of_charge"
-        self.SENSOR_SOC_PERCENTAGE = "sensor.wattwise_state_of_charge_percentage"
-        self.SENSOR_CONSUMPTION_FORECAST = "sensor.wattwise_consumption_forecast"
+        self.SENSOR_CHARGE_SOLAR = "sensor.wattwise_battery_charge_from_solar"  # kW
+        self.SENSOR_CHARGE_GRID = "sensor.wattwise_battery_charge_from_grid"  # kW
+        self.SENSOR_DISCHARGE = "sensor.wattwise_battery_discharge"  # kW
+        self.SENSOR_GRID_EXPORT = "sensor.wattwise_grid_export"  # kW
+        self.SENSOR_GRID_IMPORT = "sensor.wattwise_grid_import"  # kW
+        self.SENSOR_SOC = "sensor.wattwise_state_of_charge"  # kWh
+        self.SENSOR_SOC_PERCENTAGE = "sensor.wattwise_state_of_charge_percentage"  # %
+        self.SENSOR_CONSUMPTION_FORECAST = "sensor.wattwise_consumption_forecast"  # kW
         self.SENSOR_SOLAR_PRODUCTION_FORECAST = (
-            "sensor.wattwise_solar_production_forecast"
+            "sensor.wattwise_solar_production_forecast"  # kW
         )
-        self.SENSOR_FULL_CHARGE_STATUS = "sensor.wattwise_battery_full_charge_status"
+        self.BINARY_SENSOR_FULL_CHARGE_STATUS = (
+            "binary_sensor.wattwise_battery_full_charge_status"  # Binary (0/1)
+        )
         self.SENSOR_MAX_POSSIBLE_DISCHARGE = (
-            "sensor.wattwise_maximum_discharge_possible"
+            "sensor.wattwise_maximum_discharge_possible"  # kW
         )
-        self.SENSOR_FORECAST_HORIZON = "sensor.wattwise_forecast_horizon"
-        self.SENSOR_HISTORY_HORIZON = "sensor.wattwise_history_horizon"
+        self.SENSOR_FORECAST_HORIZON = "sensor.wattwise_forecast_horizon"  # hours
+        self.SENSOR_HISTORY_HORIZON = "sensor.wattwise_history_horizon"  # hours
 
         # Usable Time Horizon
         self.T = self.TIME_HORIZON
@@ -944,7 +946,7 @@ class WattWise(hass.Hass):
             self.SENSOR_SOC_PERCENTAGE: [],
             self.SENSOR_CONSUMPTION_FORECAST: [],
             self.SENSOR_SOLAR_PRODUCTION_FORECAST: [],
-            self.SENSOR_FULL_CHARGE_STATUS: [],
+            self.BINARY_SENSOR_FULL_CHARGE_STATUS: [],
             self.BINARY_SENSOR_CHARGING: [],
             self.BINARY_SENSOR_DISCHARGING: [],
             self.SENSOR_MAX_POSSIBLE_DISCHARGE: [],
@@ -960,6 +962,7 @@ class WattWise(hass.Hass):
             # Determine binary states
             desired_charging = entry["charge_grid"] > 0
             desired_discharging = entry["discharge"] > 0
+            full_charge_state = entry["full_charge"] >= 1
 
             # Calculate SoC percentage
             soc_percentage = (entry["soc"] / self.BATTERY_CAPACITY) * 100
@@ -980,8 +983,8 @@ class WattWise(hass.Hass):
             forecasts[self.SENSOR_SOC_PERCENTAGE].append(
                 [timestamp_iso, soc_percentage]
             )
-            forecasts[self.SENSOR_FULL_CHARGE_STATUS].append(
-                [timestamp_iso, entry["full_charge"]]
+            forecasts[self.BINARY_SENSOR_FULL_CHARGE_STATUS].append(
+                [timestamp_iso, "on" if full_charge_state else "off"]
             )
             forecasts[self.BINARY_SENSOR_CHARGING].append(
                 [timestamp_iso, "on" if desired_charging else "off"]
@@ -1012,7 +1015,11 @@ class WattWise(hass.Hass):
 
             # If no current value is found, use the latest value
             if current_value is None:
-                current_value = data[0][1] if data else "0"
+                current_value = (
+                    data[0][1]
+                    if data
+                    else ("off" if "binary_sensor" in sensor_id else "0")
+                )
 
             # Update the sensor
             self.set_state(

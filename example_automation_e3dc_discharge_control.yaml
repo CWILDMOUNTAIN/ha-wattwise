@@ -1,0 +1,17 @@
+alias: WattWise - Discharge Control
+description: ""
+triggers:
+  - trigger: state
+    entity_id:
+      - sensor.wattwise_maximum_discharge_possible
+    from: null
+    to: null
+conditions: []
+actions:
+  - action: e3dc_rscp.set_power_limits
+    data:
+      device_id: de70267c0b7b750fd9b9fc05c960e6af
+      max_discharge: >-
+        {{ (states('sensor.wattwise_maximum_discharge_possible') | float * 1000)
+        | int }}
+mode: single

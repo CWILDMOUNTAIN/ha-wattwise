@@ -153,39 +153,51 @@ You can adjust various parameters within the `wattwise.py` script to match your 
  
   - `BATTERY_EFFICIENCY`: Efficiency factor of your battery (0 < efficiency ≤ 1).
  
-  - `CHARGE_RATE_MAX`: Maximum charging rate in kW.
+  - `CHARGE_RATE_MAX`: Maximum charging rate of you Battery in kW.
  
-  - `DISCHARGE_RATE_MAX`: Maximum discharging rate in kW.
+  - `DISCHARGE_RATE_MAX`: Maximum discharging rate in kW of your Battery in kW.
+
+  - `LOWER_BATTERY_LIMIT`: The algorithm will leave this amount of kWh in the Battery to allow some buffer in case real world consumption exceeds the forecasted consumption. Set this to 0 if you want to use the full battery capacity.
  
 - **Time Horizon** : 
-  - `TIME_HORIZON`: Number of hours to look ahead in the optimization (default is 24 hours).
- 
+  - `TIME_HORIZON`: Number of hours to look ahead in the optimization (default is 48 hours). Note that the Time Horion will be truncated in each run to the highest seen forecast horizon for solar production or prices.
+
+  - `CONSUMPTION_HISTORY_DAYS`: Based on how many days in the past the average consumption shall be calculates (default is 7 days)
+
 - **Tariffs and Prices** : 
-  - `FEED_IN_TARIFF`: Price for feeding energy back to the grid in ct/kWh.
+  - `FEED_IN_TARIFF`: Price for feeding energy back to the grid in ct/kWh. Only static feed in tariffs supported currently.
  
 - **Entity IDs** : 
   - Update the entity IDs in the script to match your Home Assistant sensors and switches. Key entities include: 
-    - **Consumption Sensor** : Represents your house's energy consumption.
+    - **Consumption Sensor** : `CONSUMPTION_SENSOR` represents your house's energy consumption.
  
-    - **Solar Forecast Sensors** : For today and tomorrow's solar production forecasts. Has to be in the format provided by Solcast.
+    - **Solar Forecast Sensors** : `SOLAR_FORECAST_SENSOR_TODAY` & `SOLAR_FORECAST_SENSOR_TOMORROW` for today and tomorrow's solar production forecasts. Has to be in the format provided by Solcast.
  
-    - **Price Forecast Sensor** : Contains the energy price forecast data. Has to be in the format provided by Tibber
+    - **Price Forecast Sensor** : `PRICE_FORECAST_SENSOR` contains the energy price forecast data. Has to be in the format provided by Tibber
  
-    - **Battery State of Charge Sensor** : Indicates the current charge level of the battery.
+    - **Battery State of Charge Sensor** : `BATTERY_SOC_SENSOR` indicates the current charge level of the battery. `BINARY_SENSOR_FULL_CHARGE_STATUS` indicates when the Battery is full.
  
-    - **Battery Charger/Discharger Switches** : Controls for charging and discharging the battery.
+    - **Battery Charger/Discharger Switches** : `BATTERY_CHARGING_SWITCH` & `BATTERY_DISCHARGING_SWITCH` Controls for charging and discharging the battery.
     If you don't have any yet, you can create them as Home Assistant Helpers within Home Assistant.
+    You could alternatively set up Automations listening to `BINARY_SENSOR_CHARGING` & `BINARY_SENSOR_DISCHARGING` and/or `SENSOR_CHARGE_GRID` & `SENSOR_DISCHARGE` 
 
 **Note** : After making changes to the script, restart AppDaemon to apply the updates.
 ## Usage 
 
-Once installed and configured, WattWise automatically runs the optimization process every hour. It analyzes consumption patterns, solar production forecasts, and energy prices to determine the most cost-effective charging and discharging schedule for your battery system.
+Once installed and configured, WattWise automatically runs the optimization process every hour and on Home Assistant restart. It analyzes consumption patterns, solar production forecasts, and energy prices to determine the most cost-effective charging and discharging schedule for your battery system.
+You can also trigger a manual Update by firing the Event ``MANUAL_BATTERY_OPTIMIZATION``or for conveniance using ``input_boolean.wattwise_manual_optimization`` as a Button in the UI.
+
+You have to either configure your switches/input_booleans in ``BATTERY_CHARGING_SWITCH`` and ``BATTERY_DISCHARGING_SWITCH`` or build your own automations in Home assistant based on ``BINARY_SENSOR_CHARGING``, ``BINARY_SENSOR_DISCHARGING`` and/or ``SENSOR_CHARGE_GRID``, ``SENSOR_DISCHARGE`` to actually control your local system. 
+
+You find in ``example_automation_e3dc_charge_from_grid.yaml``and ``example_automation_e3dc_discharge_control.yaml`` two example automations how i control my E3DC Hauskraftwerk (via [Torben Nehmer's hacs-e3dc integration](https://github.com/torbennehmer/hacs-e3dc))
+
 
 ### Visualizing Forecasts 
 Integrate with [ApexCharts](https://github.com/RomRider/apexcharts-card)  in Home Assistant to visualize forecast data and optimized schedules.
 You need additionally [lovelace-card-templater](https://github.com/gadgetchnnel/lovelace-card-templater) for the dynamic time horizons.
 
 You find the YAML of the following card in the file ``wattwise-history-forecast-chart.yaml``
+This Visualization uses a lot of entities, so you will have to adjust some to your very own PV system.
 
 ![alt text](images/wattwise-history-forecast-chart.png)
 

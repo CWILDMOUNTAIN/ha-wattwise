@@ -1,0 +1,32 @@
+alias: WattWise - Charge from Grid
+description: ""
+triggers:
+  - trigger: state
+    entity_id:
+      - input_boolean.wattwise_battery_charging_from_grid
+    from: null
+    to: null
+conditions: []
+actions:
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: input_boolean.wattwise_battery_charging_from_grid
+            state: "on"
+        sequence:
+          - action: e3dc_rscp.manual_charge
+            data:
+              device_id: de70267c0b7b750fd9b9fc05c960e6af
+              charge_amount: >-
+                {{ (states('sensor.wattwise_battery_charge_from_grid') | float *
+                1000) | int }}
+      - conditions:
+          - condition: state
+            entity_id: input_boolean.wattwise_battery_charging_from_grid
+            state: "off"
+        sequence:
+          - action: e3dc_rscp.manual_charge
+            data:
+              device_id: de70267c0b7b750fd9b9fc05c960e6af
+              charge_amount: 0
+mode: single

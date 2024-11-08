@@ -117,15 +117,6 @@ template:
         state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
-      - name: "WattWise Battery Full Charge Status"
-        unique_id: "wattwise_battery_full_charge_status"
-        unit_of_measurement: "%"
-        state_class: "measurement"
-        device_class: "battery"
-        icon: "mdi:battery-charging-100"
-        state: "{{ 0 }}"
-        attributes:
-          forecast: "{{ [] }}"
       - name: "WattWise Forecast Horizon"
         unique_id: "wattwise_forecast_horizon"
         unit_of_measurement: "h"
@@ -146,5 +137,11 @@ template:
         device_class: power
         icon: "mdi:battery-minus"
         state: "{{ off }}"
+        attributes:
+          forecast: "{{ [] }}"
+      - name: "WattWise Battery Full Charge Status"
+        unique_id: "wattwise_battery_full_charge_status"
+        icon: "mdi:battery-charging-100"
+        state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
