@@ -118,7 +118,7 @@ tibber_token: abcd1234efgh5678ijkl9012mnop3456qrst7890uvw
 2. **Set up WattWise in AppDaemon**  
   - Place `wattwise.py` (the WattWise script) in your AppDaemon apps directory (e.g., `/config/appdaemon/apps/` or `/root/addon_configs/a0d7b954_appdaemon/apps/`). You can do this via SSH or via the Visual Studio Code AddOns.
  
-  - Configure the app in `apps.yaml` in the same folder. Define your user-specific settings here.**Configure the app in `apps.yaml` in the same folder. Define your user-specific settings here.Example `apps.yaml` Configuration:** 
+  - Configure the app in `apps.yaml` in the same folder. Define your user-specific settings here.
 
 ```yaml
 wattwise:
@@ -155,9 +155,7 @@ wattwise:
  
     - **Home Assistant Entity IDs** : Replace the entity IDs with your own Home Assistant sensors and switches.
  
-  - **Note** : By moving the user-specific settings to the `apps.yaml` configuration file, you no longer need to modify the `wattwise.py` script directly. This makes it easier to update the app in the future.
- 
-3. **Configure Home Assistant Sensors**  
+1. **Configure Home Assistant Sensors**  
   - Place `wattwise.yaml` in your `/config/packages/` folder. If the folder does not exist, create it.
  
   - Edit your `configuration.yaml` file of Home Assistant and add the packages statement in the `homeassistant` section:
@@ -177,7 +175,7 @@ homeassistant:
 Proper configuration is essential for WattWise to function correctly. Below are the key areas you need to configure.
 
 ### Customizing WattWise 
-You can adjust various parameters within the `apps.yaml` configuration file to match your specific setup. This allows you to keep the WattWise code generic and easily update it without modifying the core logic.App Configuration Parameters in `apps.yaml`Below is a list of configuration parameters that you can set in your `apps.yaml` file under the `wattwise` app: 
+You can adjust various parameters within the `apps.yaml` configuration file to match your specific setup. Below is a list of configuration parameters that you can set in your `apps.yaml` file under the `wattwise` app: 
 - **Battery Parameters** : 
   - **`battery_capacity`**  (float): Total capacity of your battery in kWh. Example: `11.2`
  
