@@ -41,24 +41,37 @@ class WattWise(hass.Hass):
         process, and listens for manual optimization triggers. It fetches initial states
         of charger and discharger switches to track current charging and discharging statuses.
         """
-        # Constants for Static Parameters - Adjust these to your Solar/Eletric System
-        self.BATTERY_CAPACITY = 11.2  # kWh
-        self.BATTERY_EFFICIENCY = 0.9
-        self.CHARGE_RATE_MAX = 6  # kW
-        self.DISCHARGE_RATE_MAX = 6  # kW
-        self.TIME_HORIZON = 48  # hours
-        self.FEED_IN_TARIFF = 7  # ct/kWh
-        self.CONSUMPTION_HISTORY_DAYS = 7  # days
-        self.LOWER_BATTERY_LIMIT = 1.0  # kWh
+        # Get user-specific settings from app configuration
+        self.BATTERY_CAPACITY = float(self.args.get("battery_capacity", 11.2))  # kWh
+        self.BATTERY_EFFICIENCY = float(self.args.get("battery_efficiency", 0.9))
+        self.CHARGE_RATE_MAX = float(self.args.get("charge_rate_max", 6))  # kW
+        self.DISCHARGE_RATE_MAX = float(self.args.get("discharge_rate_max", 6))  # kW
+        self.TIME_HORIZON = int(self.args.get("time_horizon", 48))  # hours
+        self.FEED_IN_TARIFF = float(self.args.get("feed_in_tariff", 7))  # ct/kWh
+        self.CONSUMPTION_HISTORY_DAYS = int(
+            self.args.get("consumption_history_days", 7)
+        )  # days
+        self.LOWER_BATTERY_LIMIT = float(
+            self.args.get("lower_battery_limit", 1.0)
+        )  # kWh
 
-        # Constants for Home Assistant Entity IDs - Replace/Adjust these with your entities
-        self.CONSUMPTION_SENSOR = "sensor.s10x_house_consumption"
-        self.SOLAR_FORECAST_SENSOR_TODAY = "sensor.solcast_pv_forecast_prognose_heute"
-        self.SOLAR_FORECAST_SENSOR_TOMORROW = (
-            "sensor.solcast_pv_forecast_prognose_morgen"
+        # Get Home Assistant Entity IDs from app configuration
+        self.CONSUMPTION_SENSOR = self.args.get(
+            "consumption_sensor", "sensor.s10x_house_consumption"
         )
-        self.PRICE_FORECAST_SENSOR = "sensor.tibber_prices"
-        self.BATTERY_SOC_SENSOR = "sensor.s10x_state_of_charge"
+        self.SOLAR_FORECAST_SENSOR_TODAY = self.args.get(
+            "solar_forecast_sensor_today", "sensor.solcast_pv_forecast_prognose_heute"
+        )
+        self.SOLAR_FORECAST_SENSOR_TOMORROW = self.args.get(
+            "solar_forecast_sensor_tomorrow",
+            "sensor.solcast_pv_forecast_prognose_morgen",
+        )
+        self.PRICE_FORECAST_SENSOR = self.args.get(
+            "price_forecast_sensor", "sensor.tibber_prices"
+        )
+        self.BATTERY_SOC_SENSOR = self.args.get(
+            "battery_soc_sensor", "sensor.s10x_state_of_charge"
+        )
 
         # Constants for Switches - No need to touch.
         self.BATTERY_CHARGING_SWITCH = (

@@ -1,10 +1,12 @@
 # WattWise 
-![WattWise Logo](images/wattwise.png)
-![GitHub License](https://img.shields.io/github/license/bullitt186/ha-wattwise?style=for-the-badge)
-![GitHub commit activity](https://img.shields.io/github/commit-activity/y/bullitt186/ha-wattwise?style=for-the-badge)
-![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge)
-WattWise is an AppDaemon application for [Home Assistant](https://www.home-assistant.io/)  that intelligently optimizes battery usage based on consumption forecasts, solar production forecasts, and dynamic energy prices. By leveraging historical data and real-time information, it schedules battery charging and discharging actions to minimize energy costs and maximize efficiency, providing seamless integration and real-time monitoring through Home Assistant's interface.
+![WattWise Logo](images/wattwise.png) 
 
+![GitHub License](https://img.shields.io/github/license/bullitt186/ha-wattwise?style=for-the-badge) 
+
+![GitHub commit activity](https://img.shields.io/github/commit-activity/y/bullitt186/ha-wattwise?style=for-the-badge) 
+
+![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge) 
+WattWise is an AppDaemon application for [Home Assistant](https://www.home-assistant.io/)  that intelligently optimizes battery usage based on consumption forecasts, solar production forecasts, and dynamic energy prices. By leveraging historical data and real-time information, it schedules battery charging and discharging actions to minimize energy costs and maximize efficiency, providing seamless integration and real-time monitoring through Home Assistant's interface.
 ## Table of Contents 
  
 - [Features](README.md#features)
@@ -17,16 +19,16 @@ WattWise is an AppDaemon application for [Home Assistant](https://www.home-assis
   - [Installation](README.md#installation)
  
 - [Configuration](README.md#configuration)  
-  - [Home Assistant Setup](README.md#home-assistant-setup)
- 
-  - [AppDaemon Setup](README.md#appdaemon-setup)
- 
   - [Customizing WattWise](README.md#customizing-wattwise)
  
 - [Usage](README.md#usage)  
+  - [Setting Up Input Booleans and Binary Sensors](README.md#setting-up-input-booleans-and-binary-sensors)
+ 
+  - [Automations for Battery Control](README.md#automations-for-battery-control)
+ 
   - [Visualizing Forecasts](README.md#visualizing-forecasts)
  
-- [Contributing]()
+- [Contributing](README.md#contributing)
  
 - [License](README.md#license)
  
@@ -44,7 +46,7 @@ WattWise is an AppDaemon application for [Home Assistant](https://www.home-assis
  
 - **Real-Time Monitoring** : Updates Home Assistant sensors with current values and forecast data for comprehensive monitoring.
  
-- **Customizable Parameters** : Adjust battery capacity, charge/discharge rates, tariffs, and more to fit your specific setup.
+- **Customizable Parameters** : Adjust battery capacity, charge/discharge rates, tariffs, and more to fit your specific setup via configuration.
  
 - **User-Friendly Visualization** : Integrates with [ApexCharts](https://github.com/RomRider/apexcharts-card)  for intuitive graphical representations of forecasts and actions.
 
@@ -87,56 +89,83 @@ WattWise leverages linear programming to optimize the charging and discharging s
 
 ### Prerequisites 
  
-- **Home Assistant** : A running instance of [Home Assistant](https://www.home-assistant.io/).
-
-- **HACS** : [Home Assistant Community Store](https://www.hacs.xyz/) installed
-
-- **HA Solcast PV Solar Forecast Integration** : Installed via HACS and configured, so that you get an accurate PV production forecast.
-The script expects the forecast information in the format provided by [Solcast](https://github.com/BJReplay/ha-solcast-solar).
-
-- **Tibber Integration** : Installed and configured via the [official HA integration](https://www.home-assistant.io/integrations/tibber/). The script expects the price information in the format provided by Tibber.
-
+- **Home Assistant** : A running instance of [Home Assistant](https://www.home-assistant.io/) .
  
-- **AppDaemon** : 
-  * Search for the “AppDaemon 4” add-on in the home assistant add-on store and install it.
-  * Start the “AppDaemon 4” add-on
-  * Check the logs of the “AppDaemon 4” add-on to see if everything went well.
-  * [Relevant Forum Entry](https://community.home-assistant.io/t/home-assistant-community-add-on-appdaemon-4/163259)
-  
+- **HACS** : [Home Assistant Community Store](https://www.hacs.xyz/)  installed.
+ 
+- **HA Solcast PV Solar Forecast Integration** : Installed via HACS and configured, so that you get an accurate PV production forecast. The script expects the forecast information in the format provided by [Solcast](https://github.com/BJReplay/ha-solcast-solar) .
+ 
+- **Tibber Integration** : Installed and configured via the [official HA integration](https://www.home-assistant.io/integrations/tibber/) . The script expects the price information in the format provided by Tibber.
+ 
+- **AppDaemon** :
+  - Search for the “AppDaemon 4” add-on in the Home Assistant add-on store and install it.
+
+  - Start the “AppDaemon 4” add-on.
+
+  - Check the logs of the “AppDaemon 4” add-on to see if everything went well.
+ 
+  - [Relevant Forum Entry](https://community.home-assistant.io/t/home-assistant-community-add-on-appdaemon-4/163259)
 
 ### Installation 
  
-1. **AppDaemon Python Packages** 
-   
-   Under Settings --> Add-Ons --> AppDaemon --> Configuration:
-     * Add System Packages: `musl-dev`, `gcc`, `glpk`
-     * Add Python Packages: `pulp`, `numpy==1.26.4`, `tzlocal`
+1. **AppDaemon Python Packages** Under **Settings**  → **Add-Ons**  → **AppDaemon**  → **Configuration** : 
+  - **System Packages** : Add `musl-dev`, `gcc`, `glpk`
+ 
+  - **Python Packages** : Add `pulp`, `numpy==1.26.4`, `tzlocal`
  
 2. **Set up WattWise in AppDaemon**  
-  * Place `wattwise.py` (the WattWise script) is placed in your AppDaemon apps directory (e.g., `/root/addon_configs/a0d7b954_appdaemon/apps/`).
-  You can do so e.g. via SSH or via the Visual Studio Code AddOns.
+  - Place `wattwise.py` (the WattWise script) in your AppDaemon apps directory (e.g., `/config/appdaemon/apps/` or `/root/addon_configs/a0d7b954_appdaemon/apps/`). You can do this via SSH or via the Visual Studio Code AddOns.
+ 
+  - Configure the app in `apps.yaml` in the same folder. Define your user-specific settings here.**Configure the app in `apps.yaml` in the same folder. Define your user-specific settings here.Example `apps.yaml` Configuration:** 
 
-  * Register the app in `apps.yaml`in the same folder.
-    * `ha_url`: The URL of your Home Assistant instance.
+```yaml
+wattwise:
+  module: wattwise
+  class: WattWise
+  ha_url: "http://your-home-assistant-url:8123"
+  token: "YOUR_LONG_LIVED_ACCESS_TOKEN"
+  # User-specific settings
+  battery_capacity: 11.2  # kWh
+  battery_efficiency: 0.9
+  charge_rate_max: 6  # kW
+  discharge_rate_max: 6  # kW
+  time_horizon: 48  # hours
+  feed_in_tariff: 7  # ct/kWh
+  consumption_history_days: 7  # days
+  lower_battery_limit: 1.0  # kWh
+  # Home Assistant Entity IDs
+  consumption_sensor: "sensor.your_house_consumption"
+  solar_forecast_sensor_today: "sensor.solcast_pv_forecast_today"
+  solar_forecast_sensor_tomorrow: "sensor.solcast_pv_forecast_tomorrow"
+  price_forecast_sensor: "sensor.tibber_prices"
+  battery_soc_sensor: "sensor.your_battery_soc"
+  # Optional switches (default values shown)
+  battery_charging_switch: "input_boolean.wattwise_battery_charging_from_grid"
+  battery_discharging_switch: "input_boolean.wattwise_battery_discharging_enabled"
+```
  
-     * `token`: A long-lived access token from Home Assistant for API access.
-        ```yaml
-        wattwise:
-          module: wattwise
-          class: WattWise
-          ha_url: http://homeassistant.local:8123
-          token: "YOUR_LONG_LIVED_ACCESS_TOKEN"
-        ```
-1. **Configure Home Assistant Sensors**  
-  * Place wattwise.yaml in your `/root/config/packages` folder.
-  if the folder does not exist, create it.
-  * Edit your configuration.yaml file of home assistant and add the packages statement (2nd line) in the homeassistant section of your configuration.yaml
-    ```yaml
-    homeassistant:
-      packages: !include_dir_named packages
-    ```
+  - **Explanation** : 
+    - **`module`**  and ****`module`**  and `class`** : Point to your WattWise app module and class.
  
-1. **Restart Services**  
+    - **`ha_url`**  and ****`ha_url`**  and `token`** : Your Home Assistant URL and a long-lived access token for API access.
+ 
+    - **User-specific settings** : All the constants specific to your solar/electric system are defined here. Adjust them according to your setup.
+ 
+    - **Home Assistant Entity IDs** : Replace the entity IDs with your own Home Assistant sensors and switches.
+ 
+  - **Note** : By moving the user-specific settings to the `apps.yaml` configuration file, you no longer need to modify the `wattwise.py` script directly. This makes it easier to update the app in the future.
+ 
+3. **Configure Home Assistant Sensors**  
+  - Place `wattwise.yaml` in your `/config/packages/` folder. If the folder does not exist, create it.
+ 
+  - Edit your `configuration.yaml` file of Home Assistant and add the packages statement in the `homeassistant` section:
+
+```yaml
+homeassistant:
+  packages: !include_dir_named packages
+```
+ 
+4. **Restart Services**  
   - **Home Assistant** : Restart to apply sensor configurations.
  
   - **AppDaemon** : Restart to load the WattWise application.
@@ -146,60 +175,67 @@ The script expects the forecast information in the format provided by [Solcast](
 Proper configuration is essential for WattWise to function correctly. Below are the key areas you need to configure.
 
 ### Customizing WattWise 
-You can adjust various parameters within the `wattwise.py` script to match your specific setup: 
-
+You can adjust various parameters within the `apps.yaml` configuration file to match your specific setup. This allows you to keep the WattWise code generic and easily update it without modifying the core logic.App Configuration Parameters in `apps.yaml`Below is a list of configuration parameters that you can set in your `apps.yaml` file under the `wattwise` app: 
 - **Battery Parameters** : 
-  - `BATTERY_CAPACITY`: Total capacity of your battery in kWh.
+  - **`battery_capacity`**  (float): Total capacity of your battery in kWh. Example: `11.2`
  
-  - `BATTERY_EFFICIENCY`: Efficiency factor of your battery (0 < efficiency ≤ 1).
+  - **`battery_efficiency`**  (float): Efficiency factor of your battery (0 < efficiency ≤ 1). Example: `0.9`
  
-  - `CHARGE_RATE_MAX`: Maximum charging rate of you Battery in kW.
+  - **`charge_rate_max`**  (float): Maximum charging rate of your battery in kW. Example: `6`
  
-  - `DISCHARGE_RATE_MAX`: Maximum discharging rate in kW of your Battery in kW.
-
-  - `LOWER_BATTERY_LIMIT`: The algorithm will leave this amount of kWh in the Battery to allow some buffer in case real world consumption exceeds the forecasted consumption. Set this to 0 if you want to use the full battery capacity.
+  - **`discharge_rate_max`**  (float): Maximum discharging rate of your battery in kW. Example: `6`
+ 
+  - **`lower_battery_limit`**  (float): The algorithm will leave this amount of kWh in the battery to allow some buffer in case real-world consumption exceeds the forecasted consumption. Set this to `0` if you want to use the full battery capacity. Example: `1.0`
  
 - **Time Horizon** : 
-  - `TIME_HORIZON`: Number of hours to look ahead in the optimization (default is 48 hours). Note that the Time Horion will be truncated in each run to the highest seen forecast horizon for solar production or prices.
-
-  - `CONSUMPTION_HISTORY_DAYS`: Based on how many days in the past the average consumption shall be calculates (default is 7 days)
-
+  - **`time_horizon`**  (int): Number of hours to look ahead in the optimization (default is 48 hours). Note that the time horizon will be truncated in each run to the highest seen forecast horizon for solar production or prices. Example: `48`
+ 
+  - **`consumption_history_days`**  (int): Number of days in the past to calculate the average consumption (default is 7 days). Example: `7`
+ 
 - **Tariffs and Prices** : 
-  - `FEED_IN_TARIFF`: Price for feeding energy back to the grid in ct/kWh. Only static feed in tariffs supported currently.
+  - **`feed_in_tariff`**  (float): Price for feeding energy back to the grid in ct/kWh. Only static feed-in tariffs are supported currently. Example: `7`
  
 - **Entity IDs** : 
-  - Update the entity IDs in the script to match your Home Assistant sensors and switches. Key entities include: 
-    - **Consumption Sensor** : `CONSUMPTION_SENSOR` represents your house's energy consumption.
+  - **`consumption_sensor`**  (string): Entity ID for your house's energy consumption sensor. Example: `"sensor.your_house_consumption"`
  
-    - **Solar Forecast Sensors** : `SOLAR_FORECAST_SENSOR_TODAY` & `SOLAR_FORECAST_SENSOR_TOMORROW` for today and tomorrow's solar production forecasts. Has to be in the format provided by Solcast.
+  - **`solar_forecast_sensor_today`**  (string): Entity ID for today's solar production forecast. Must be in the format provided by Solcast. Example: `"sensor.solcast_pv_forecast_today"`
  
-    - **Price Forecast Sensor** : `PRICE_FORECAST_SENSOR` contains the energy price forecast data. Has to be in the format provided by Tibber
+  - **`solar_forecast_sensor_tomorrow`**  (string): Entity ID for tomorrow's solar production forecast. Example: `"sensor.solcast_pv_forecast_tomorrow"`
  
-    - **Battery State of Charge Sensor** : `BATTERY_SOC_SENSOR` indicates the current charge level of the battery. `BINARY_SENSOR_FULL_CHARGE_STATUS` indicates when the Battery is full.
+  - **`price_forecast_sensor`**  (string): Entity ID for energy price forecast data. Must be in the format provided by Tibber. Example: `"sensor.tibber_prices"`
  
-    - **Battery Charger/Discharger Switches** : `BATTERY_CHARGING_SWITCH` & `BATTERY_DISCHARGING_SWITCH` Controls for charging and discharging the battery.
-    If you don't have any yet, you can create them as Home Assistant Helpers within Home Assistant.
-    You could alternatively set up Automations listening to `BINARY_SENSOR_CHARGING` & `BINARY_SENSOR_DISCHARGING` and/or `SENSOR_CHARGE_GRID` & `SENSOR_DISCHARGE` 
-
-**Note** : After making changes to the script, restart AppDaemon to apply the updates.
+  - **`battery_soc_sensor`**  (string): Entity ID for the battery state of charge sensor. Example: `"sensor.your_battery_soc"`
+ 
+- **Battery Charger/Discharger Switches** : 
+  - **`battery_charging_switch`**  (string): Entity ID for the switch that controls battery charging from the grid. Default: `"input_boolean.wattwise_battery_charging_from_grid"`
+ 
+  - **`battery_discharging_switch`**  (string): Entity ID for the switch that controls battery discharging to the house. Default: `"input_boolean.wattwise_battery_discharging_enabled"`
+**Note** : By configuring these parameters in the `apps.yaml` file, you no longer need to modify the `wattwise.py` script directly. This makes it easier to update the app in the future.
+#### After Configuration 
+After making changes to the `apps.yaml` file, restart AppDaemon to apply the updates.
 ## Usage 
 
 Once installed and configured, WattWise automatically runs the optimization process every hour and on Home Assistant restart. It analyzes consumption patterns, solar production forecasts, and energy prices to determine the most cost-effective charging and discharging schedule for your battery system.
-You can also trigger a manual Update by firing the Event ``MANUAL_BATTERY_OPTIMIZATION``or for conveniance using ``input_boolean.wattwise_manual_optimization`` as a Button in the UI.
+You can also trigger a manual update by firing the event `MANUAL_BATTERY_OPTIMIZATION` or, for convenience, using `input_boolean.wattwise_manual_optimization` as a button in the UI.
+### Setting Up Input Booleans and Binary Sensors 
 
-You have to either configure your switches/input_booleans in ``BATTERY_CHARGING_SWITCH`` and ``BATTERY_DISCHARGING_SWITCH`` or build your own automations in Home assistant based on ``BINARY_SENSOR_CHARGING``, ``BINARY_SENSOR_DISCHARGING`` and/or ``SENSOR_CHARGE_GRID``, ``SENSOR_DISCHARGE`` to actually control your local system. 
+If you don't have the switches/input_booleans configured yet, you can create them as Home Assistant Helpers within Home Assistant.
+**Creating Input Booleans:** Add the following to your `configuration.yaml` or use the UI to create helpers.
 
-You find in ``example_automation_e3dc_charge_from_grid.yaml``and ``example_automation_e3dc_discharge_control.yaml`` two example automations how i control my E3DC Hauskraftwerk (via [Torben Nehmer's hacs-e3dc integration](https://github.com/torbennehmer/hacs-e3dc))
-
-
+```yaml
+input_boolean:
+  wattwise_battery_charging_from_grid:
+    name: WattWise Battery Charging from Grid
+    icon: mdi:battery-charging
+  wattwise_battery_discharging_enabled:
+    name: WattWise Battery Discharging Enabled
+    icon: mdi:battery-minus
+```
+**Note** : These input booleans are used by WattWise to control charging and discharging actions.
+### Automations for Battery Control 
+You need to configure automations based on `binary_sensor.wattwise_battery_charging_from_grid`, `binary_sensor.wattwise_battery_discharging_enabled`, and/or `sensor.wattwise_battery_charge_from_grid`, `sensor.wattwise_battery_discharge` to actually control your local system.**Example Automations:** You can find example automations in the files `example_automation_e3dc_charge_from_grid.yaml` and `example_automation_e3dc_discharge_control.yaml`. These examples show how to control an E3DC Hauskraftwerk using [Torben Nehmer's hacs-e3dc integration](https://github.com/torbennehmer/hacs-e3dc) .
 ### Visualizing Forecasts 
-Integrate with [ApexCharts](https://github.com/RomRider/apexcharts-card)  in Home Assistant to visualize forecast data and optimized schedules.
-You need additionally [lovelace-card-templater](https://github.com/gadgetchnnel/lovelace-card-templater) for the dynamic time horizons.
-
-You find the YAML of the following card in the file ``wattwise-history-forecast-chart.yaml``
-This Visualization uses a lot of entities, so you will have to adjust some to your very own PV system.
-
-![alt text](images/wattwise-history-forecast-chart.png)
+Integrate with [ApexCharts](https://github.com/RomRider/apexcharts-card)  in Home Assistant to visualize forecast data and optimized schedules. You also need [lovelace-card-templater](https://github.com/gadgetchnnel/lovelace-card-templater)  for dynamic time horizons.You can find the YAML for the following card in the file `wattwise-history-forecast-chart.yaml`. This visualization uses several entities, so you will need to adjust them to match your PV system.![WattWise Forecast Chart](images/wattwise-history-forecast-chart.png) 
 
 ## Contributing 
 
@@ -230,11 +266,9 @@ git push origin feature/YourFeature
 Please ensure that your contributions adhere to the project's coding standards and include appropriate documentation.
 
 ## License 
-This project is licensed under the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.html.en#license-text).
-
+This project is licensed under the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.html.en#license-text) .
 ## Contact 
  
-  
 - **GitHub** : [bullitt168](https://github.com/bullitt168)
 
 ## Acknowledgements 
@@ -242,9 +276,12 @@ This project is licensed under the [AGPL-3.0 license](https://www.gnu.org/licens
 - [AppDaemon](https://appdaemon.readthedocs.io/en/latest/)
  
 - [Home Assistant](https://www.home-assistant.io/)
-
-- [SolCast](https://github.com/BJReplay/ha-solcast-solar)
-  
-- [ApexCharts Card](https://github.com/RomRider/apexcharts-card)
  
+- [SolCast](https://github.com/BJReplay/ha-solcast-solar)
+ 
+- [ApexCharts Card](https://github.com/RomRider/apexcharts-card)
 
+
+---
+
+**Note** : Ensure that you adjust the entity IDs and settings in the `apps.yaml` configuration to match your specific Home Assistant setup.
