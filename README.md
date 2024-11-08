@@ -233,7 +233,11 @@ input_boolean:
 ```
 **Note** : These input booleans are used by WattWise to control charging and discharging actions.
 ### Automations for Battery Control 
-You need to configure automations based on `binary_sensor.wattwise_battery_charging_from_grid`, `binary_sensor.wattwise_battery_discharging_enabled`, and/or `sensor.wattwise_battery_charge_from_grid`, `sensor.wattwise_battery_discharge` to actually control your local system.**Example Automations:** You can find example automations in the files `example_automation_e3dc_charge_from_grid.yaml` and `example_automation_e3dc_discharge_control.yaml`. These examples show how to control an E3DC Hauskraftwerk using [Torben Nehmer's hacs-e3dc integration](https://github.com/torbennehmer/hacs-e3dc) .
+You need to configure automations based on `binary_sensor.wattwise_battery_charging_from_grid`, `binary_sensor.wattwise_battery_discharging_enabled`, and/or `sensor.wattwise_battery_charge_from_grid`, `sensor.wattwise_battery_discharge` to actually control your local system.
+
+**Example Automations:**
+
+You can find example automations in the files `example_automation_e3dc_charge_from_grid.yaml` and `example_automation_e3dc_discharge_control.yaml`. These examples show how to control an E3DC Hauskraftwerk using [Torben Nehmer's hacs-e3dc integration](https://github.com/torbennehmer/hacs-e3dc) .
 ### Visualizing Forecasts 
 Integrate with [ApexCharts](https://github.com/RomRider/apexcharts-card)  in Home Assistant to visualize forecast data and optimized schedules. You also need [lovelace-card-templater](https://github.com/gadgetchnnel/lovelace-card-templater)  for dynamic time horizons.You can find the YAML for the following card in the file `wattwise-history-forecast-chart.yaml`. This visualization uses several entities, so you will need to adjust them to match your PV system.![WattWise Forecast Chart](images/wattwise-history-forecast-chart.png) 
 
