@@ -22,6 +22,8 @@ import os
 import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
 import pulp
+import pytz
+import requests
 import tzlocal
 
 
@@ -41,7 +43,7 @@ class WattWise(hass.Hass):
         process, and listens for manual optimization triggers. It fetches initial states
         of charger and discharger switches to track current charging and discharging statuses.
         """
-        # Constants for Static Parameters
+        # Constants for Static Parameters - Adjust these to your Solar/Eletric System
         self.BATTERY_CAPACITY = 11.2  # kWh
         self.BATTERY_EFFICIENCY = 0.9
         self.CHARGE_RATE_MAX = 6  # kW
@@ -51,7 +53,7 @@ class WattWise(hass.Hass):
         self.CONSUMPTION_HISTORY_DAYS = 7  # days
         self.LOWER_BATTERY_LIMIT = 1.0  # kWh
 
-        # Constants for Home Assistant Entity IDs
+        # Constants for Home Assistant Entity IDs - Replace/Adjust these with your entities
         self.CONSUMPTION_SENSOR = "sensor.s10x_house_consumption"
         self.SOLAR_FORECAST_SENSOR_TODAY = "sensor.solcast_pv_forecast_prognose_heute"
         self.SOLAR_FORECAST_SENSOR_TOMORROW = (
@@ -60,7 +62,7 @@ class WattWise(hass.Hass):
         self.PRICE_FORECAST_SENSOR = "sensor.tibber_prices"
         self.BATTERY_SOC_SENSOR = "sensor.s10x_state_of_charge"
 
-        # Constants for Switches
+        # Constants for Switches - No need to touch.
         self.BATTERY_CHARGING_SWITCH = (
             "input_boolean.wattwise_battery_charging_from_grid"
         )
@@ -68,7 +70,7 @@ class WattWise(hass.Hass):
             "input_boolean.wattwise_battery_discharging_enabled"
         )
 
-        # Constants for State Tracking Binary Sensors
+        # Constants for State Tracking Binary Sensors - No need to touch.
         self.BINARY_SENSOR_CHARGING = (
             "binary_sensor.wattwise_battery_charging_from_grid"
         )
@@ -76,7 +78,7 @@ class WattWise(hass.Hass):
             "binary_sensor.wattwise_battery_discharging_enabled"
         )
 
-        # Constants for Forecast Sensors
+        # Constants for Forecast Sensors - No need to touch.
         self.SENSOR_CHARGE_SOLAR = "sensor.wattwise_battery_charge_from_solar"
         self.SENSOR_CHARGE_GRID = "sensor.wattwise_battery_charge_from_grid"
         self.SENSOR_DISCHARGE = "sensor.wattwise_battery_discharge"
@@ -141,6 +143,9 @@ class WattWise(hass.Hass):
         self.log(
             "Listening for manual optimization trigger event 'MANUAL_BATTERY_OPTIMIZATION'."
         )
+        # Run the optimization process 30 seconds after startup
+        self.run_in(self.start_optimization_process, 30)
+        self.log("Scheduled optimization to run 30 seconds after startup.")
 
     def set_initial_states(self):
         """
@@ -565,8 +570,10 @@ class WattWise(hass.Hass):
         )  # Binary variables
         self.log("Decision variables created.")
 
-        # Objective function: Minimize the total cost of grid imports and grid charging, minus value of final SoC
-        P_end = np.mean(P_t)
+        # Objective function: Minimize the total cost of grid imports and grid charging, minus value of final SoC.
+        # Financial value of final SoC is calculated by using the minimum forecasted price, in order to not
+        # over-value the residual energy and by that reward saving energy in the battery too much.
+        P_end = np.min(P_t)
         prob += (
             pulp.lpSum(
                 [P_t[t] * G[t] - self.FEED_IN_TARIFF * E[t] for t in range(self.T)]
@@ -576,14 +583,6 @@ class WattWise(hass.Hass):
         self.log(
             "Objective function set to minimize total cost minus value of final SoC."
         )
-
-        # Objective function: Minimize the total cost of grid imports and grid charging.
-        # prob += (
-        #    pulp.lpSum([P_t[t] * G[t] - self.FEED_IN_TARIFF * E[t] for t in range(self.T)])
-        # )
-        # self.log(
-        #    "Objective function set to minimize total cost."
-        # )
 
         # Initial SoC
         prob += SoC[0] == SoC_0

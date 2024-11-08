@@ -1,3 +1,30 @@
+input_boolean:
+  wattwise_battery_charging_from_grid:
+    name: WattWise Battery Charging from Grid
+    icon: mdi:battery-charging
+  wattwise_battery_discharging_enabled:
+    name: WattWise Battery Discharging Enabled
+    icon: mdi:battery-minus
+  wattwise_manual_optimization:
+    name: WattWise Manual Optimization Trigger
+    icon: mdi:play
+
+automation:
+  - alias: Trigger WattWise Manual Optimization
+    description: Fires MANUAL_BATTERY_OPTIMIZATION event when input_boolean is turned on
+    triggers:
+      - entity_id: input_boolean.wattwise_manual_optimization
+        to: "on"
+        trigger: state
+    conditions: []
+    actions:
+      - event: MANUAL_BATTERY_OPTIMIZATION
+      - target:
+          entity_id: input_boolean.wattwise_manual_optimization
+        action: input_boolean.turn_off
+        data: {}
+    mode: single
+
 template:
   - sensor:
       - name: "WattWise Battery Charge from Solar"
@@ -24,6 +51,15 @@ template:
         state_class: "measurement"
         device_class: "power"
         icon: "mdi:battery-outline"
+        state: "{{ 0 }}"
+        attributes:
+          forecast: "{{ [] }}"
+      - name: "WattWise Maximum Discharge Possible"
+        unique_id: "wattwise_maximum_discharge_possible"
+        unit_of_measurement: "kW"
+        state_class: "measurement"
+        device_class: "power"
+        icon: "mdi:battery-minus-outline"
         state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
@@ -90,6 +126,12 @@ template:
         state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
+      - name: "WattWise Forecast Horizon"
+        unique_id: "wattwise_forecast_horizon"
+        unit_of_measurement: "h"
+        state_class: "measurement"
+        icon: "mdi:clock"
+        state: "{{ 0 }}"
 
   - binary_sensor:
       - name: "WattWise Battery Charging from Grid"
