@@ -1,12 +1,10 @@
 # WattWise 
 ![WattWise Logo](images/wattwise.png) 
 
-![GitHub License](https://img.shields.io/github/license/bullitt186/ha-wattwise?style=for-the-badge) 
+![GitHub License](https://img.shields.io/github/license/bullitt186/ha-wattwise?style=for-the-badge)![GitHub commit activity](https://img.shields.io/github/commit-activity/y/bullitt186/ha-wattwise?style=for-the-badge)![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge)
 
-![GitHub commit activity](https://img.shields.io/github/commit-activity/y/bullitt186/ha-wattwise?style=for-the-badge) 
-
-![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge) 
 WattWise is an AppDaemon application for [Home Assistant](https://www.home-assistant.io/)  that intelligently optimizes battery usage based on consumption forecasts, solar production forecasts, and dynamic energy prices. By leveraging historical data and real-time information, it schedules battery charging and discharging actions to minimize energy costs and maximize efficiency, providing seamless integration and real-time monitoring through Home Assistant's interface.
+
 ## Table of Contents 
  
 - [Features](README.md#features)
@@ -210,28 +208,14 @@ You can adjust various parameters within the `apps.yaml` configuration file to m
   - **`battery_charging_switch`**  (string): Entity ID for the switch that controls battery charging from the grid. Default: `"input_boolean.wattwise_battery_charging_from_grid"`
  
   - **`battery_discharging_switch`**  (string): Entity ID for the switch that controls battery discharging to the house. Default: `"input_boolean.wattwise_battery_discharging_enabled"`
-**Note** : By configuring these parameters in the `apps.yaml` file, you no longer need to modify the `wattwise.py` script directly. This makes it easier to update the app in the future.
+
 #### After Configuration 
 After making changes to the `apps.yaml` file, restart AppDaemon to apply the updates.
 ## Usage 
 
 Once installed and configured, WattWise automatically runs the optimization process every hour and on Home Assistant restart. It analyzes consumption patterns, solar production forecasts, and energy prices to determine the most cost-effective charging and discharging schedule for your battery system.
 You can also trigger a manual update by firing the event `MANUAL_BATTERY_OPTIMIZATION` or, for convenience, using `input_boolean.wattwise_manual_optimization` as a button in the UI.
-### Setting Up Input Booleans and Binary Sensors 
 
-If you don't have the switches/input_booleans configured yet, you can create them as Home Assistant Helpers within Home Assistant.
-**Creating Input Booleans:** Add the following to your `configuration.yaml` or use the UI to create helpers.
-
-```yaml
-input_boolean:
-  wattwise_battery_charging_from_grid:
-    name: WattWise Battery Charging from Grid
-    icon: mdi:battery-charging
-  wattwise_battery_discharging_enabled:
-    name: WattWise Battery Discharging Enabled
-    icon: mdi:battery-minus
-```
-**Note** : These input booleans are used by WattWise to control charging and discharging actions.
 ### Automations for Battery Control 
 You need to configure automations based on `binary_sensor.wattwise_battery_charging_from_grid`, `binary_sensor.wattwise_battery_discharging_enabled`, and/or `sensor.wattwise_battery_charge_from_grid`, `sensor.wattwise_battery_discharge` to actually control your local system.
 
@@ -284,8 +268,3 @@ This project is licensed under the [AGPL-3.0 license](https://www.gnu.org/licens
 - [SolCast](https://github.com/BJReplay/ha-solcast-solar)
  
 - [ApexCharts Card](https://github.com/RomRider/apexcharts-card)
-
-
----
-
-**Note** : Ensure that you adjust the entity IDs and settings in the `apps.yaml` configuration to match your specific Home Assistant setup.
