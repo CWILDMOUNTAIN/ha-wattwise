@@ -11,7 +11,7 @@ input_boolean:
 
 automation:
   - alias: Trigger WattWise Manual Optimization
-    description: Fires MANUAL_BATTERY_OPTIMIZATION event when input_boolean is turned on
+    description: Fires MANUAL_BATTERY_OPTIMIZATION event when turned on
     triggers:
       - entity_id: input_boolean.wattwise_manual_optimization
         to: "on"
@@ -28,7 +28,8 @@ automation:
 rest:
   - resource: https://api.tibber.com/v1-beta/gql
     method: POST
-    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total level } today { total level } tomorrow { total level } } } } } }" }'
+    payload: >-
+      '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total level } today { total level } tomorrow { total level } } } } } }" }'
     scan_interval: 60
     headers:
       Authorization: !secret tibber_token

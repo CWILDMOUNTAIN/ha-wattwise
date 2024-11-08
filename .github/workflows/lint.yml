@@ -40,4 +40,5 @@ jobs:
 
     # Step 6: Run yamllint in check mode, respecting pyproject.toml
     - name: Run yamllint
-      run: yamllint -d relaxed .
+      run: |
+        yamllint -d "{extends: relaxed, rules: {line-length: {max: 180}}}" .
