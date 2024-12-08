@@ -66,9 +66,6 @@ class WattWise(hass.Hass):
             "solar_forecast_sensor_tomorrow",
             "sensor.solcast_pv_forecast_prognose_morgen",
         )
-        self.PRICE_FORECAST_SENSOR = self.args.get(
-            "price_forecast_sensor", "sensor.wattwise_tibber_prices"
-        )
         self.BATTERY_SOC_SENSOR = self.args.get(
             "battery_soc_sensor", "sensor.s10x_state_of_charge"
         )
@@ -107,8 +104,20 @@ class WattWise(hass.Hass):
         self.SENSOR_MAX_POSSIBLE_DISCHARGE = (
             "sensor.wattwise_maximum_discharge_possible"  # kW
         )
+        self.PRICE_FORECAST_SENSOR = "sensor.wattwise_tibber_prices"
         self.SENSOR_FORECAST_HORIZON = "sensor.wattwise_forecast_horizon"  # hours
         self.SENSOR_HISTORY_HORIZON = "sensor.wattwise_history_horizon"  # hours
+
+        # Cheap window binary sensors
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_1_HOUR = (
+            "binary_sensor.wattwise_within_cheapest_hour"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_2_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_2_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_3_hours"  # hours
+        )
 
         # Usable Time Horizon
         self.T = self.TIME_HORIZON
@@ -715,9 +724,38 @@ class WattWise(hass.Hass):
             charging_schedule
         )
 
-        # Update forecast sensors with the optimization results
+        # Identify the cheapest time windows based on price forecast
+        cheapest_1 = self.find_cheapest_windows(P_t, 1)
+        self.log(f"cheapest_1: {cheapest_1}")
+        cheapest_2 = self.find_cheapest_windows(P_t, 2)
+        self.log(f"cheapest_2: {cheapest_2}")
+        cheapest_3 = self.find_cheapest_windows(P_t, 3)
+        self.log(f"cheapest_3: {cheapest_2}")
+
+        # Initialize lists to track which hours are within the cheapest windows
+        within_cheapest_1_hour = [False] * self.T
+        within_cheapest_2_hours = [False] * self.T
+        within_cheapest_3_hours = [False] * self.T
+
+        for idx in cheapest_1:
+            if idx < self.T:
+                within_cheapest_1_hour[idx] = True
+        for idx in cheapest_2:
+            if idx < self.T:
+                within_cheapest_2_hours[idx] = True
+        for idx in cheapest_3:
+            if idx < self.T:
+                within_cheapest_3_hours[idx] = True
+
+        # Update forecast sensors, including the new binary sensors
         self.update_forecast_sensors(
-            charging_schedule, C_t, S_t, max_discharge_possible
+            charging_schedule,
+            C_t,
+            S_t,
+            max_discharge_possible,
+            within_cheapest_1_hour,
+            within_cheapest_2_hours,
+            within_cheapest_3_hours,
         )
 
         # Schedule actions based on the optimized schedule
@@ -760,34 +798,34 @@ class WattWise(hass.Hass):
             desired_discharging = entry["discharge"] > 0
 
             # Schedule Charging Actions
-            if desired_charging != self.charging_from_grid:
-                if desired_charging:
-                    # Schedule start charging
-                    self.run_at(
-                        self.start_charging,
-                        action_time,
-                        charge_rate=entry["charge_grid"],
-                    )
-                    self.log(
-                        f"Scheduled START charging from grid at {action_time} with rate {entry['charge_grid']} kW."
-                    )
-                else:
-                    # Schedule stop charging
-                    self.run_at(self.stop_charging, action_time)
-                    self.log(f"Scheduled STOP charging at {action_time}.")
-                self.charging_from_grid = desired_charging  # Update the state
+            # if desired_charging != self.charging_from_grid:
+            if desired_charging:
+                # Schedule start charging
+                self.run_at(
+                    self.start_charging,
+                    action_time,
+                    charge_rate=entry["charge_grid"],
+                )
+                self.log(
+                    f"Scheduled START charging from grid at {action_time} with rate {entry['charge_grid']} kW."
+                )
+            else:
+                # Schedule stop charging
+                self.run_at(self.stop_charging, action_time)
+                self.log(f"Scheduled STOP charging at {action_time}.")
+            self.charging_from_grid = desired_charging  # Update the state
 
             # Schedule Discharging Actions
-            if desired_discharging != self.discharging_to_house:
-                if desired_discharging:
-                    # Schedule enabling discharging
-                    self.run_at(self.enable_discharging, action_time)
-                    self.log(f"Scheduled ENABLE discharging at {action_time}.")
-                else:
-                    # Schedule disabling discharging
-                    self.run_at(self.disable_discharging, action_time)
-                    self.log(f"Scheduled DISABLE discharging at {action_time}.")
-                self.discharging_to_house = desired_discharging  # Update the state
+            # if desired_discharging != self.discharging_to_house:
+            if desired_discharging:
+                # Schedule enabling discharging
+                self.run_at(self.enable_discharging, action_time)
+                self.log(f"Scheduled ENABLE discharging at {action_time}.")
+            else:
+                # Schedule disabling discharging
+                self.run_at(self.disable_discharging, action_time)
+                self.log(f"Scheduled DISABLE discharging at {action_time}.")
+            self.discharging_to_house = desired_discharging  # Update the state
 
             # Handle Exporting to Grid (Optional)
             if entry["export"] > 0:
@@ -818,7 +856,7 @@ class WattWise(hass.Hass):
         self.call_service(
             "input_boolean/turn_on", entity_id=self.BATTERY_CHARGING_SWITCH
         )
-        self.set_state(self.BINARY_SENSOR_CHARGING, state=1)
+        self.set_state(self.BINARY_SENSOR_CHARGING, state="on")
 
     def stop_charging(self, kwargs):
         """
@@ -837,7 +875,7 @@ class WattWise(hass.Hass):
         self.call_service(
             "input_boolean/turn_off", entity_id=self.BATTERY_CHARGING_SWITCH
         )
-        self.set_state(self.BINARY_SENSOR_CHARGING, state=0)
+        self.set_state(self.BINARY_SENSOR_CHARGING, state="off")
 
     def enable_discharging(self, kwargs):
         """
@@ -927,6 +965,9 @@ class WattWise(hass.Hass):
         consumption_forecast,
         solar_forecast,
         max_discharge_possible,
+        within_cheapest_1_hour,
+        within_cheapest_2_hours,
+        within_cheapest_3_hours,
     ):
         """
         Updates Home Assistant sensors with forecast data for visualization.
@@ -963,7 +1004,12 @@ class WattWise(hass.Hass):
             self.BINARY_SENSOR_CHARGING: [],
             self.BINARY_SENSOR_DISCHARGING: [],
             self.SENSOR_MAX_POSSIBLE_DISCHARGE: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_1_HOUR: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_2_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS: [],
         }
+
+        self.log("Forecast Arrays initialized.")
 
         now = self.get_now_time()
 
@@ -1014,6 +1060,20 @@ class WattWise(hass.Hass):
             forecasts[self.SENSOR_MAX_POSSIBLE_DISCHARGE].append(
                 [timestamp_iso, max_discharge_possible[t]]
             )
+            self.log(f"Updating cheap hour sensors for hour {t}.")
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_1_HOUR].append(
+                [timestamp_iso, "on" if within_cheapest_1_hour[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_2_HOURS].append(
+                [timestamp_iso, "on" if within_cheapest_2_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS].append(
+                [timestamp_iso, "on" if within_cheapest_3_hours[t] else "off"]
+            )
+            self.log(f"Updated cheap hour sensors for hour {t}.")
+
+        self.log("Forecast Arrays set up.")
+
         # Update sensors
         for sensor_id, data in forecasts.items():
             # Get the current value for the sensor's state
@@ -1034,14 +1094,40 @@ class WattWise(hass.Hass):
                     else ("off" if "binary_sensor" in sensor_id else "0")
                 )
 
+            self.log(f"Set state {current_value} for {sensor_id}. Forecast: {data}.")
+
             # Update the sensor
             self.set_state(
                 sensor_id, state=current_value, attributes={"forecast": data}
             )
-            # self.log(f"Updated {sensor_id} with current value and forecast data.")
+            self.log(f"Updated {sensor_id} with current value and forecast data.")
 
         # Update the Forecast Time Horizon
         self.set_state(self.SENSOR_FORECAST_HORIZON, state=self.T)
+
+    def find_cheapest_windows(self, prices, window_size):
+        """
+        Finds the start index of the cheapest consecutive window of the given size.
+
+        Args:
+            prices (list of float): List of prices in ct/kWh.
+            window_size (int): Size of the window in hours.
+
+        Returns:
+            list of int: List of indices that are within the cheapest window.
+        """
+        self.log(f"Finding cheapest {window_size}h window.")
+        min_total = float("inf")
+        min_start = 0
+        for i in range(len(prices) - window_size + 1):
+            window_total = sum(prices[i : i + window_size])
+            if window_total < min_total:
+                min_total = window_total
+                min_start = i
+        self.log(
+            f"Cheapest {window_size}h window: {min_start} - {min_start + window_size}."
+        )
+        return list(range(min_start, min_start + window_size))
 
     def get_now_time(self):
         now = datetime.datetime.now(tzlocal.get_localzone())

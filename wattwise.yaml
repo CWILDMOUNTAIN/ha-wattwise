@@ -25,25 +25,24 @@ automation:
         data: {}
     mode: single
 
-rest:
-  - resource: https://api.tibber.com/v1-beta/gql
+sensor:
+  - platform: rest
+    unique_id: wattwise_tibber_prices
+    name: Wattwise Tibber Prices
+    resource: https://api.tibber.com/v1-beta/gql
     method: POST
-    payload: >-
-      '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total level } today { total level } tomorrow { total level } } } } } }" }'
-    scan_interval: 60
+    payload: '{ "query": "{ viewer { homes { currentSubscription { status priceInfo { current { total level } today { total level } tomorrow { total level } } } } } }" }'
+    json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
+    json_attributes:
+      - today
+      - tomorrow
+    value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
+    scan_interval: 30
     headers:
       Authorization: !secret tibber_token
       Content-Type: application/json
       User-Agent: REST
-    sensor:
-      name: WattWise Tibber Prices
-      unique_id: wattwise_tibber_prices
-      unit_of_measurement: EUR/kWh
-      json_attributes_path: "$.data.viewer.homes[0].currentSubscription.priceInfo"
-      value_template: "{{ value_json.data.viewer.homes[0].currentSubscription.priceInfo.current.total | float }}"
-      json_attributes:
-        - today
-        - tomorrow
+    unit_of_measurement: EUR/kWh
 
 template:
   - sensor:
@@ -163,5 +162,23 @@ template:
         unique_id: "wattwise_battery_full_charge_status"
         icon: "mdi:battery-charging-100"
         state: "{{ 0 }}"
+        attributes:
+          forecast: "{{ [] }}"
+      - name: "WattWise Within cheapest hour"
+        unique_id: "wattwise_within_cheapest_hour"
+        icon: "mdi:clock-time-one-outline"
+        state: "{{ off }}"
+        attributes:
+          forecast: "{{ [] }}"
+      - name: "WattWise Within cheapest 2 hours"
+        unique_id: "wattwise_within_cheapest_2_hours"
+        icon: "mdi:clock-time-two-outline"
+        state: "{{ off }}"
+        attributes:
+          forecast: "{{ [] }}"
+      - name: "WattWise Within cheapest 3 hours"
+        unique_id: "wattwise_within_cheapest_3_hours"
+        icon: "mdi:clock-time-three-outline"
+        state: "{{ off }}"
         attributes:
           forecast: "{{ [] }}"

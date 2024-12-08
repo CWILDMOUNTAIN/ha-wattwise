@@ -364,5 +364,53 @@ card:
         }
 
         return data;
+    - entity: binary_sensor.wattwise_within_cheapest_hour
+      name: Innerhalb des günstigsten 1-Stunden-Fensters (Forecast)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      color: gold
+      unit: on/off
+      yaxis_id: kWh
+      show:
+        hidden_by_default: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          const value = item[1] === 'on' ? 1 : 0;
+          return [new Date(item[0]).getTime(), value];
+        });
+    - entity: binary_sensor.wattwise_within_cheapest_2_hours
+      name: Innerhalb des günstigsten 2-Stunden-Fensters (Forecast)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      color: orange
+      unit: on/off
+      yaxis_id: kWh
+      show:
+        hidden_by_default: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          const value = item[1] === 'on' ? 1 : 0;
+          return [new Date(item[0]).getTime(), value];
+        });
+    - entity: binary_sensor.wattwise_within_cheapest_3_hours
+      name: Innerhalb des günstigsten 3-Stunden-Fensters (Forecast)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      color: red
+      unit: on/off
+      yaxis_id: kWh
+      show:
+        hidden_by_default: false
+      data_generator: |
+        return entity.attributes.forecast.map(item => {
+          const value = item[1] === 'on' ? 1 : 0;
+          return [new Date(item[0]).getTime(), value];
+        });
 entities:
   - sensor.wattwise_forecast_horizon

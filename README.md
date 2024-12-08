@@ -116,7 +116,7 @@ tibber_token: abcd1234efgh5678ijkl9012mnop3456qrst7890uvw
   - **Python Packages** : Add `pulp`, `numpy==1.26.4`, `tzlocal`
  
 2. **Set up WattWise in AppDaemon**  
-  - Place `wattwise.py` (the WattWise script) in your AppDaemon apps directory (e.g., `/config/appdaemon/apps/` or `/root/addon_configs/a0d7b954_appdaemon/apps/`). You can do this via SSH or via the Visual Studio Code AddOns.
+  - Place `wattwise.py` (the WattWise script) in your AppDaemon apps directory (e.g., `/config/appdaemon/apps/`). You can do this via SSH or via the Visual Studio Code AddOns.
  
   - Configure the app in `apps.yaml` in the same folder. Define your user-specific settings here.
 
