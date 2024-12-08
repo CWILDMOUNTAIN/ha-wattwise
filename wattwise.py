@@ -119,6 +119,11 @@ class WattWise(hass.Hass):
             "binary_sensor.wattwise_within_cheapest_3_hours"  # hours
         )
 
+        # maximum price threshold to exclude excessively high prices in the cheap price windows
+        self.MAX_PRICE_THRESH_CT = float(
+            self.args.get("max_price_threshold_ct", 80)
+        )  # ct/kWh
+
         # Usable Time Horizon
         self.T = self.TIME_HORIZON
 
@@ -148,6 +153,7 @@ class WattWise(hass.Hass):
 
         # Path to store consumption history
         self.CONSUMPTION_HISTORY_FILE = "/config/apps/wattwise_consumption_history.json"
+        self.CHEAP_WINDOWS_FILE = "/config/apps/wattwise_cheap_windows.json"
 
         # Fetch and set initial states from Home Assistant
         self.set_initial_states()
@@ -724,30 +730,57 @@ class WattWise(hass.Hass):
             charging_schedule
         )
 
-        # Identify the cheapest time windows based on price forecast
-        cheapest_1 = self.find_cheapest_windows(P_t, 1)
-        self.log(f"cheapest_1: {cheapest_1}")
-        cheapest_2 = self.find_cheapest_windows(P_t, 2)
-        self.log(f"cheapest_2: {cheapest_2}")
-        cheapest_3 = self.find_cheapest_windows(P_t, 3)
-        self.log(f"cheapest_3: {cheapest_2}")
+        # Determine the forecast date (assuming price forecasts are for the next day)
+        forecast_date = (now + datetime.timedelta(days=1)).date()
+        self.log(f"Forecast date determined as {forecast_date}.")
+
+        # Load existing window assignments
+        cheap_windows_data = self.load_cheap_windows()
+
+        # Check if window assignments are already set for the current forecast date
+        if cheap_windows_data.get("forecast_date") != forecast_date.isoformat():
+            # New forecast period, find and save new windows
+            cheapest_1 = self.find_cheapest_windows(P_t, 1)
+            cheapest_2 = self.find_cheapest_windows(P_t, 2)
+            cheapest_3 = self.find_cheapest_windows(P_t, 3)
+
+            # Save windows
+            windows = {
+                "1_hour": cheapest_1,
+                "2_hours": cheapest_2,
+                "3_hours": cheapest_3,
+            }
+            self.save_cheap_windows(forecast_date, windows)
+            self.log(f"New cheap windows found for {forecast_date}: {windows}")
+        else:
+            # Use existing windows
+            windows = cheap_windows_data.get("windows", {})
+            cheapest_1 = windows.get("1_hour", [])
+            cheapest_2 = windows.get("2_hours", [])
+            cheapest_3 = windows.get("3_hours", [])
+            self.log(f"Using existing cheap windows for {forecast_date}: {windows}")
 
         # Initialize lists to track which hours are within the cheapest windows
         within_cheapest_1_hour = [False] * self.T
         within_cheapest_2_hours = [False] * self.T
         within_cheapest_3_hours = [False] * self.T
 
+        # Assign window indices to the tracking lists
         for idx in cheapest_1:
-            if idx < self.T:
+            if 0 <= idx < self.T:
                 within_cheapest_1_hour[idx] = True
         for idx in cheapest_2:
-            if idx < self.T:
+            if 0 <= idx < self.T:
                 within_cheapest_2_hours[idx] = True
         for idx in cheapest_3:
-            if idx < self.T:
+            if 0 <= idx < self.T:
                 within_cheapest_3_hours[idx] = True
 
-        # Update forecast sensors, including the new binary sensors
+        self.log(f"Cheapest 1-hour window indices: {cheapest_1}")
+        self.log(f"Cheapest 2-hour window indices: {cheapest_2}")
+        self.log(f"Cheapest 3-hour window indices: {cheapest_3}")
+
+        # Update forecast sensors
         self.update_forecast_sensors(
             charging_schedule,
             C_t,
@@ -1107,7 +1140,8 @@ class WattWise(hass.Hass):
 
     def find_cheapest_windows(self, prices, window_size):
         """
-        Finds the start index of the cheapest consecutive window of the given size.
+        Finds the start index of the cheapest consecutive window of the given size,
+        ensuring no individual hour within the window exceeds the maximum price threshold.
 
         Args:
             prices (list of float): List of prices in ct/kWh.
@@ -1116,16 +1150,25 @@ class WattWise(hass.Hass):
         Returns:
             list of int: List of indices that are within the cheapest window.
         """
-        self.log(f"Finding cheapest {window_size}h window.")
+        self.log(
+            f"Finding cheapest {window_size}h window with max price threshold {self.MAX_PRICE_THRESH_CT} ct/kWh."
+        )
         min_total = float("inf")
         min_start = 0
         for i in range(len(prices) - window_size + 1):
-            window_total = sum(prices[i : i + window_size])
+            window = prices[i : i + window_size]
+            # Skip window if any hour exceeds the threshold
+            if any(price > self.MAX_PRICE_THRESH_CT for price in window):
+                self.log(
+                    f"Skipping window {i} to {i + window_size} due to high price in window: {window}"
+                )
+                continue
+            window_total = sum(window)
             if window_total < min_total:
                 min_total = window_total
                 min_start = i
         self.log(
-            f"Cheapest {window_size}h window: {min_start} - {min_start + window_size}."
+            f"Cheapest {window_size}h window without high prices: {min_start} - {min_start + window_size}."
         )
         return list(range(min_start, min_start + window_size))
 
@@ -1152,3 +1195,39 @@ class WattWise(hass.Hass):
             return True
         except ValueError:
             return False
+
+    def load_cheap_windows(self):
+        """
+        Loads the cheap window assignments from a JSON file.
+
+        Returns:
+            dict: Contains 'forecast_date' and 'windows' if available, else empty dict.
+        """
+        if os.path.exists(self.CHEAP_WINDOWS_FILE):
+            try:
+                with open(self.CHEAP_WINDOWS_FILE, "r") as f:
+                    data = json.load(f)
+                    self.log("Loaded existing cheap window assignments.")
+                    return data
+            except Exception as e:
+                self.error(f"Error loading cheap window assignments: {e}")
+                return {}
+        else:
+            self.log("No existing cheap window assignments found.")
+            return {}
+
+    def save_cheap_windows(self, forecast_date, windows):
+        """
+        Saves the cheap window assignments to a JSON file.
+
+        Args:
+            forecast_date (datetime.date): The date for which the windows are assigned.
+            windows (dict): Contains lists of indices for 1, 2, and 3-hour windows.
+        """
+        data = {"forecast_date": forecast_date.isoformat(), "windows": windows}
+        try:
+            with open(self.CHEAP_WINDOWS_FILE, "w") as f:
+                json.dump(data, f)
+                self.log("Cheap window assignments saved.")
+        except Exception as e:
+            self.error(f"Error saving cheap window assignments: {e}")

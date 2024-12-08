@@ -16,3 +16,4 @@ wattwise:
   solar_forecast_sensor_today: "sensor.solcast_pv_forecast_prognose_heute"
   solar_forecast_sensor_tomorrow: "sensor.solcast_pv_forecast_prognose_morgen"
   battery_soc_sensor: "sensor.s10x_state_of_charge"
+  max_price_threshold_ct: 40  # ct/kWh, maximum price threshold to exclude excessively high prices in the cheap price windows
