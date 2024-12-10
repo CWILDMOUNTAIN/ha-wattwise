@@ -18,6 +18,8 @@
 import datetime
 import json
 import os
+from datetime import timedelta
+from typing import List
 
 import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
@@ -141,11 +143,6 @@ class WattWise(hass.Hass):
         self.charging_from_grid = False
         self.discharging_to_house = False
 
-        # Initialize forecast readiness flags
-        self.consumption_forecast_ready = False
-        self.solar_forecast_ready = False
-        self.price_forecast_ready = False
-
         # Initialize forecast storage
         self.consumption_forecast = []
         self.solar_forecast = []
@@ -159,7 +156,7 @@ class WattWise(hass.Hass):
         self.set_initial_states()
 
         # Schedule the optimization to run hourly at the top of the hour
-        now = self.get_now_time()
+        now = get_now_time()
         next_run = now.replace(minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run += datetime.timedelta(hours=1)
@@ -172,7 +169,7 @@ class WattWise(hass.Hass):
             "Listening for manual optimization trigger event 'MANUAL_BATTERY_OPTIMIZATION'."
         )
         # Run the optimization process 30 seconds after startup
-        self.run_in(self.start_optimization_process, 30)
+        self.run_in(self.start_optimization_process, 5)
         self.log("Scheduled optimization to run 30 seconds after startup.")
 
     def set_initial_states(self):
@@ -216,10 +213,8 @@ class WattWise(hass.Hass):
         Args:
             kwargs (dict): Additional keyword arguments.
         """
-        self.consumption_forecast_ready = False
-        self.solar_forecast_ready = False
-        self.price_forecast_ready = False
 
+        self.log("############ Start Opimization ############")
         self.consumption_forecast = []
         self.solar_forecast = []
         self.price_forecast = []
@@ -229,6 +224,9 @@ class WattWise(hass.Hass):
         self.get_consumption_forecast()
         self.get_solar_production_forecast()
         self.get_energy_price_forecast()
+        self.optimize_battery()
+        self.log("############ End Opimization ############")
+        return
 
     def get_consumption_forecast(self):
         """
@@ -244,7 +242,7 @@ class WattWise(hass.Hass):
         history_data = self.load_consumption_history()
 
         # Determine the time window
-        now = self.get_now_time()
+        now = get_now_time()
         history_days_ago = now - datetime.timedelta(days=self.CONSUMPTION_HISTORY_DAYS)
 
         # Remove data older than 7 days
@@ -285,7 +283,7 @@ class WattWise(hass.Hass):
             )  # Convert to local time
             hour = timestamp.hour
             value_str = state.get("state", 0)
-            if self.is_float(value_str):
+            if is_float(value_str):
                 value = float(value_str)
                 hourly_consumption[hour].append(value)
 
@@ -300,14 +298,10 @@ class WattWise(hass.Hass):
                 avg_consumption = 0  # Default if no data
             average_consumption.append(avg_consumption)
 
-        self.log(f"Consumption forecast retrieved: {average_consumption}")
+        self.log(f"Consumption forecast retrieved.")
 
         # Store the forecast for use in optimization
         self.consumption_forecast = average_consumption
-        self.consumption_forecast_ready = True
-
-        # Proceed with optimization if other forecasts are ready
-        self.check_and_run_optimization()
 
     def load_consumption_history(self):
         """
@@ -409,7 +403,6 @@ class WattWise(hass.Hass):
 
         if not forecast_data_today:
             self.error("Solar production forecast data for today is unavailable.")
-            self.solar_forecast_ready = False
             return
 
         if not forecast_data_tomorrow:
@@ -422,7 +415,7 @@ class WattWise(hass.Hass):
         combined_forecast_data = forecast_data_today + forecast_data_tomorrow
 
         solar_forecast = []
-        now = self.get_now_time()
+        now = get_now_time()
         for t in range(self.T):
             forecast_time = now + datetime.timedelta(hours=t)
             forecast_time = forecast_time.astimezone()
@@ -445,8 +438,7 @@ class WattWise(hass.Hass):
             solar_forecast.append(value)
         self.log(f"Solar production forecast retrieved: {solar_forecast}")
         self.solar_forecast = solar_forecast
-        self.solar_forecast_ready = True
-        self.check_and_run_optimization()
+        return
 
     def get_energy_price_forecast(self):
         """
@@ -465,10 +457,9 @@ class WattWise(hass.Hass):
 
         if not price_data_today:
             self.error("Energy price forecast data for today is unavailable.")
-            self.price_forecast_ready = False
             return
 
-        now = self.get_now_time()
+        now = get_now_time()
         current_hour = now.hour
 
         # Combine today's and tomorrow's data
@@ -502,33 +493,15 @@ class WattWise(hass.Hass):
                 break
         self.log(f"Energy price forecast retrieved: {price_forecast}")
         self.price_forecast = price_forecast
-        self.price_forecast_ready = True
-        self.check_and_run_optimization()
+        return
 
-    def check_and_run_optimization(self):
-        """
-        Checks if all forecasts are ready before proceeding with optimization.
-        """
-        if (
-            self.consumption_forecast_ready
-            and self.solar_forecast_ready
-            and self.price_forecast_ready
-        ):
-            self.log("All forecasts are ready. Starting optimization.")
-            self.run_in(self.optimize_battery, 0)
-        else:
-            self.log("Waiting for all forecasts to be ready...")
-
-    def optimize_battery(self, kwargs):
+    def optimize_battery(self):
         """
         Executes the battery optimization process.
 
         This method retrieves the current state of charge, formulates and solves
         an optimization problem to determine the optimal charging and discharging
         schedule, updates forecast sensors, and schedules charging/discharging actions.
-
-        Args:
-            kwargs (dict): Additional keyword arguments.
 
         Returns:
             None
@@ -557,7 +530,7 @@ class WattWise(hass.Hass):
 
         # Log the forecasts per hour for debugging
         self.log("Forecasts per hour:")
-        now = self.get_now_time()
+        now = get_now_time()
         for t in range(self.T):
             forecast_time = now + datetime.timedelta(hours=t)
             hour = forecast_time.hour
@@ -686,7 +659,7 @@ class WattWise(hass.Hass):
 
         # Extract the optimized charging schedule
         charging_schedule = []
-        now = self.get_now_time()
+        now = get_now_time()
         for t in range(self.T):
             charge_solar = Ch_solar[t].varValue
             charge_grid = Ch_grid[t].varValue
@@ -731,34 +704,66 @@ class WattWise(hass.Hass):
         )
 
         # Determine the forecast date (assuming price forecasts are for the next day)
-        forecast_date = (now + datetime.timedelta(days=1)).date()
+        forecast_date = now.date()
         self.log(f"Forecast date determined as {forecast_date}.")
 
         # Load existing window assignments
         cheap_windows_data = self.load_cheap_windows()
 
+        cheapest_hours_1 = []
+        cheapest_hours_2 = []
+        cheapest_hours_3 = []
+
+        cheapest_dates_1 = []
+        cheapest_dates_2 = []
+        cheapest_dates_3 = []
+
         # Check if window assignments are already set for the current forecast date
-        if cheap_windows_data.get("forecast_date") != forecast_date.isoformat():
+        if (cheap_windows_data.get("forecast_date") != forecast_date.isoformat()) and (
+            now.hour > 13
+        ):
             # New forecast period, find and save new windows
-            cheapest_1 = self.find_cheapest_windows(P_t, 1)
-            cheapest_2 = self.find_cheapest_windows(P_t, 2)
-            cheapest_3 = self.find_cheapest_windows(P_t, 3)
+            cheapest_hours_1 = self.find_cheapest_windows(P_t, 1)
+            cheapest_hours_2 = self.find_cheapest_windows(P_t, 2)
+            cheapest_hours_3 = self.find_cheapest_windows(P_t, 3)
+
+            cheapest_dates_1 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_1
+            ]
+            cheapest_dates_2 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_2
+            ]
+            cheapest_dates_3 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_3
+            ]
 
             # Save windows
             windows = {
-                "1_hour": cheapest_1,
-                "2_hours": cheapest_2,
-                "3_hours": cheapest_3,
+                "cheapest_dates_1": cheapest_dates_1,
+                "cheapest_dates_2": cheapest_dates_2,
+                "cheapest_dates_3": cheapest_dates_3,
             }
             self.save_cheap_windows(forecast_date, windows)
             self.log(f"New cheap windows found for {forecast_date}: {windows}")
         else:
             # Use existing windows
             windows = cheap_windows_data.get("windows", {})
-            cheapest_1 = windows.get("1_hour", [])
-            cheapest_2 = windows.get("2_hours", [])
-            cheapest_3 = windows.get("3_hours", [])
+            cheapest_dates_1 = windows.get("cheapest_dates_1", [])
+            cheapest_dates_2 = windows.get("cheapest_dates_2", [])
+            cheapest_dates_3 = windows.get("cheapest_dates_3", [])
             self.log(f"Using existing cheap windows for {forecast_date}: {windows}")
+
+            for iso_date in cheapest_dates_1:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_1.append(dateToRelativeHour(date))
+
+            for iso_date in cheapest_dates_2:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_2.append(dateToRelativeHour(date))
+
+            for iso_date in cheapest_dates_3:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_3.append(dateToRelativeHour(date))
 
         # Initialize lists to track which hours are within the cheapest windows
         within_cheapest_1_hour = [False] * self.T
@@ -766,19 +771,19 @@ class WattWise(hass.Hass):
         within_cheapest_3_hours = [False] * self.T
 
         # Assign window indices to the tracking lists
-        for idx in cheapest_1:
+        for idx in cheapest_hours_1:
             if 0 <= idx < self.T:
                 within_cheapest_1_hour[idx] = True
-        for idx in cheapest_2:
+        for idx in cheapest_hours_2:
             if 0 <= idx < self.T:
                 within_cheapest_2_hours[idx] = True
-        for idx in cheapest_3:
+        for idx in cheapest_hours_3:
             if 0 <= idx < self.T:
                 within_cheapest_3_hours[idx] = True
 
-        self.log(f"Cheapest 1-hour window indices: {cheapest_1}")
-        self.log(f"Cheapest 2-hour window indices: {cheapest_2}")
-        self.log(f"Cheapest 3-hour window indices: {cheapest_3}")
+        self.log(f"Cheapest 1-hour window indices: {cheapest_hours_1}")
+        self.log(f"Cheapest 2-hour window indices: {cheapest_hours_2}")
+        self.log(f"Cheapest 3-hour window indices: {cheapest_hours_3}")
 
         # Update forecast sensors
         self.update_forecast_sensors(
@@ -792,8 +797,8 @@ class WattWise(hass.Hass):
         )
 
         # Schedule actions based on the optimized schedule
-        self.schedule_actions(charging_schedule)
-        self.log("Charging and discharging actions scheduled.")
+        # self.schedule_actions(charging_schedule)
+        # self.log("Charging and discharging actions scheduled.")
 
     def schedule_actions(self, schedule):
         """
@@ -814,7 +819,7 @@ class WattWise(hass.Hass):
         self.log(
             "Scheduling charging and discharging actions based on WattWise's schedule."
         )
-        now = self.get_now_time()
+        now = get_now_time()
 
         for t, entry in enumerate(schedule):
             forecast_time = entry["time"]
@@ -1021,8 +1026,6 @@ class WattWise(hass.Hass):
         Returns:
             None
         """
-        self.log("Updating forecast sensors with optimization results.")
-
         forecasts = {
             self.SENSOR_CHARGE_SOLAR: [],
             self.SENSOR_CHARGE_GRID: [],
@@ -1044,7 +1047,7 @@ class WattWise(hass.Hass):
 
         self.log("Forecast Arrays initialized.")
 
-        now = self.get_now_time()
+        now = get_now_time()
 
         # Build the forecast data
         for t, entry in enumerate(charging_schedule):
@@ -1093,7 +1096,6 @@ class WattWise(hass.Hass):
             forecasts[self.SENSOR_MAX_POSSIBLE_DISCHARGE].append(
                 [timestamp_iso, max_discharge_possible[t]]
             )
-            self.log(f"Updating cheap hour sensors for hour {t}.")
             forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_1_HOUR].append(
                 [timestamp_iso, "on" if within_cheapest_1_hour[t] else "off"]
             )
@@ -1103,9 +1105,6 @@ class WattWise(hass.Hass):
             forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS].append(
                 [timestamp_iso, "on" if within_cheapest_3_hours[t] else "off"]
             )
-            self.log(f"Updated cheap hour sensors for hour {t}.")
-
-        self.log("Forecast Arrays set up.")
 
         # Update sensors
         for sensor_id, data in forecasts.items():
@@ -1127,13 +1126,12 @@ class WattWise(hass.Hass):
                     else ("off" if "binary_sensor" in sensor_id else "0")
                 )
 
-            self.log(f"Set state {current_value} for {sensor_id}. Forecast: {data}.")
+            self.log(f'Set state "{current_value}" for {sensor_id}.')
 
             # Update the sensor
             self.set_state(
                 sensor_id, state=current_value, attributes={"forecast": data}
             )
-            self.log(f"Updated {sensor_id} with current value and forecast data.")
 
         # Update the Forecast Time Horizon
         self.set_state(self.SENSOR_FORECAST_HORIZON, state=self.T)
@@ -1172,30 +1170,6 @@ class WattWise(hass.Hass):
         )
         return list(range(min_start, min_start + window_size))
 
-    def get_now_time(self):
-        now = datetime.datetime.now(tzlocal.get_localzone())
-        now_hour = now.replace(minute=0, second=0, microsecond=0)
-        return now_hour
-
-    def is_float(self, value):
-        """
-        Determines whether a given value can be converted to a float.
-
-        This utility method attempts to convert the provided value to a float.
-        It returns True if successful, otherwise False.
-
-        Args:
-            value (str): The value to check.
-
-        Returns:
-            bool: True if the value can be converted to float, False otherwise.
-        """
-        try:
-            float(value)
-            return True
-        except ValueError:
-            return False
-
     def load_cheap_windows(self):
         """
         Loads the cheap window assignments from a JSON file.
@@ -1231,3 +1205,64 @@ class WattWise(hass.Hass):
                 self.log("Cheap window assignments saved.")
         except Exception as e:
             self.error(f"Error saving cheap window assignments: {e}")
+
+
+def relativeHourToDate(hour: int) -> datetime:
+    """
+    Adds the specified number of whole hours to the current time and returns a new datetime object
+    with minutes, seconds, and microseconds set to zero.
+
+    Parameters:
+    hour (int): The number of whole hours to add to the current time.
+
+    Returns:
+    datetime: The resulting datetime after adding the hours, with minutes, seconds, and microseconds set to zero.
+    """
+    now = get_now_time()
+    new_time = now + timedelta(hours=hour)
+
+    return new_time
+
+
+def dateToRelativeHour(date: datetime) -> int:
+    """
+    Calculates the whole-hour offset between the given date and the current time.
+
+    Parameters:
+    date (datetime): The datetime object to compare with the current time.
+
+    Returns:
+    int: The number of whole hours difference. Positive if the date is in the future,
+        negative if in the past.
+    """
+    now = get_now_time()
+    delta = date - now
+    hours = delta.total_seconds() // 3600  # Floor division to get whole hours
+
+    return int(hours)
+
+
+def get_now_time():
+    now = datetime.datetime.now(tzlocal.get_localzone())
+    now_hour = now.replace(minute=0, second=0, microsecond=0)
+    return now_hour
+
+
+def is_float(value):
+    """
+    Determines whether a given value can be converted to a float.
+
+    This utility method attempts to convert the provided value to a float.
+    It returns True if successful, otherwise False.
+
+    Args:
+        value (str): The value to check.
+
+    Returns:
+        bool: True if the value can be converted to float, False otherwise.
+    """
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False

@@ -57,6 +57,7 @@ card:
     - entity: sensor.wattwise_battery_charge_from_grid
       name: Charge/Grid (forecast)
       type: line
+      curve: stepline
       yaxis_id: kWh
       unit: kWh
       extend_to: false
@@ -68,6 +69,7 @@ card:
     - entity: sensor.wattwise_battery_charge_from_grid
       name: Charge/Grid (forecast*)
       type: line
+      curve: stepline
       yaxis_id: kWh
       unit: kWh
       extend_to: false
@@ -76,7 +78,7 @@ card:
       show:
         hidden_by_default: true
     - entity: sensor.s10x_battery_charge
-      name: Charge (actual)
+      name: Charge (actual
       yaxis_id: kWh
       unit: kW
       extend_to: false
@@ -84,7 +86,7 @@ card:
       stroke_dash: 2
       group_by:
         func: avg
-        duration: 1h
+        duration: 5m
     - entity: sensor.wattwise_battery_discharge
       name: Discharge (forecast)
       type: line
@@ -115,7 +117,7 @@ card:
       stroke_dash: 2
       group_by:
         func: avg
-        duration: 1h
+        duration: 5m
     - entity: sensor.wattwise_grid_export
       name: Export (forecast)
       yaxis_id: kWh
@@ -144,7 +146,7 @@ card:
       stroke_dash: 2
       group_by:
         func: avg
-        duration: 1h
+        duration: 5m
     - entity: sensor.wattwise_grid_import
       name: Import (forecast)
       yaxis_id: kWh
@@ -173,7 +175,7 @@ card:
       stroke_dash: 2
       group_by:
         func: avg
-        duration: 1h
+        duration: 5m
     - entity: sensor.s10x_state_of_charge
       name: SoC (actual)
       yaxis_id: kWh
@@ -184,7 +186,7 @@ card:
       stroke_dash: 2
       group_by:
         func: avg
-        duration: 1h
+        duration: 5m
     - entity: sensor.wattwise_state_of_charge
       name: SoC (forecast)
       yaxis_id: kWh
@@ -211,7 +213,7 @@ card:
       extend_to: false
       group_by:
         func: avg
-        duration: 1h
+        duration: 5m
       color: aquamarine
       stroke_dash: 2
     - entity: sensor.wattwise_consumption_forecast
@@ -365,7 +367,7 @@ card:
 
         return data;
     - entity: binary_sensor.wattwise_within_cheapest_hour
-      name: Innerhalb des günstigsten 1-Stunden-Fensters (Forecast)
+      name: Cheapest hour (forecast)
       type: line
       curve: stepline
       extend_to: false
@@ -380,8 +382,20 @@ card:
           const value = item[1] === 'on' ? 1 : 0;
           return [new Date(item[0]).getTime(), value];
         });
+    - entity: binary_sensor.wattwise_within_cheapest_hour
+      name: Cheapest hour (forecast*)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      yaxis_id: kWh
+      color: gold
+      opacity: 0.2
+      unit: on/off
+      show:
+        hidden_by_default: true
     - entity: binary_sensor.wattwise_within_cheapest_2_hours
-      name: Innerhalb des günstigsten 2-Stunden-Fensters (Forecast)
+      name: Cheapest 2 hours (forecast)
       type: line
       curve: stepline
       extend_to: false
@@ -396,8 +410,20 @@ card:
           const value = item[1] === 'on' ? 1 : 0;
           return [new Date(item[0]).getTime(), value];
         });
+    - entity: binary_sensor.wattwise_within_cheapest_2_hours
+      name: Cheapest 2 hours (forecast*)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      yaxis_id: kWh
+      color: orange
+      opacity: 0.2
+      unit: on/off
+      show:
+        hidden_by_default: true
     - entity: binary_sensor.wattwise_within_cheapest_3_hours
-      name: Innerhalb des günstigsten 3-Stunden-Fensters (Forecast)
+      name: Cheapest 3 hours (forecast)
       type: line
       curve: stepline
       extend_to: false
@@ -412,5 +438,17 @@ card:
           const value = item[1] === 'on' ? 1 : 0;
           return [new Date(item[0]).getTime(), value];
         });
+    - entity: binary_sensor.wattwise_within_cheapest_3_hours
+      name: Cheapest 3 hours (forecast*)
+      type: line
+      curve: stepline
+      extend_to: false
+      stroke_width: 2
+      yaxis_id: kWh
+      color: red
+      opacity: 0.2
+      unit: on/off
+      show:
+        hidden_by_default: true
 entities:
   - sensor.wattwise_forecast_horizon
