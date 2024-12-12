@@ -91,6 +91,9 @@ class WattWise(hass.Hass):
         # Constants for Forecast Sensors - No need to touch.
         self.SENSOR_CHARGE_SOLAR = "sensor.wattwise_battery_charge_from_solar"  # kW
         self.SENSOR_CHARGE_GRID = "sensor.wattwise_battery_charge_from_grid"  # kW
+        self.SENSOR_CHARGE_GRID_SESSION = (
+            "sensor.wattwise_battery_charge_grid_session"  # kW
+        )
         self.SENSOR_DISCHARGE = "sensor.wattwise_battery_discharge"  # kW
         self.SENSOR_GRID_EXPORT = "sensor.wattwise_grid_export"  # kW
         self.SENSOR_GRID_IMPORT = "sensor.wattwise_grid_import"  # kW
@@ -1132,6 +1135,63 @@ class WattWise(hass.Hass):
             self.set_state(
                 sensor_id, state=current_value, attributes={"forecast": data}
             )
+
+        # Calculate charging session
+        charge_grid_session = 0
+        session_start = None
+        session_duration = 0
+        in_session = False
+
+        # Get current sensor state to preserve existing session
+        current_session = float(self.get_state(self.SENSOR_CHARGE_GRID_SESSION) or 0)
+
+        if current_session > 0:
+            # If there's an active session, keep it
+            charge_grid_session = current_session
+            in_session = True
+
+        self.log(f"Session: current_session: {current_session}")
+
+        # Look for a new charging session in the forecast
+        for t, entry in enumerate(charging_schedule):
+            self.log(
+                f't = {t}, entry["charge_grid"] = {entry["charge_grid"]}, in_session: {in_session}'
+            )
+            if t == 0 and entry["charge_grid"] > 0 and not in_session:
+                # Start of a new session
+                in_session = True
+                session_start = relativeHourToDate(t)
+                charge_grid_session = entry["charge_grid"]
+                session_duration = 1
+            elif t == 0 and entry["charge_grid"] == 0:
+                in_session = False
+                session_start = None
+                charge_grid_session = 0
+                session_duration = 0
+                break
+            elif entry["charge_grid"] > 0 and in_session:
+                # Continue session
+                charge_grid_session += entry["charge_grid"]
+                session_duration += 1
+            elif entry["charge_grid"] == 0 and in_session:
+                # End of session
+                break
+
+        # Update the charge grid session sensor
+        self.set_state(
+            self.SENSOR_CHARGE_GRID_SESSION,
+            state=round(charge_grid_session, 3),
+            attributes={
+                "session_start": session_start.isoformat() if session_start else None,
+                "session_duration": session_duration,
+            },
+        )
+        self.log(
+            f'Set state "{round(charge_grid_session, 3)}" for self.SENSOR_CHARGE_GRID_SESSION.'
+        )
+        self.log(
+            f"Session Start: {session_start.isoformat() if session_start else None}, Session Duration: {session_duration}"
+        )
 
         # Update the Forecast Time Horizon
         self.set_state(self.SENSOR_FORECAST_HORIZON, state=self.T)
