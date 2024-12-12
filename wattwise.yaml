@@ -136,12 +136,24 @@ template:
         state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
+          
       - name: "WattWise Forecast Horizon"
         unique_id: "wattwise_forecast_horizon"
         unit_of_measurement: "h"
         state_class: "measurement"
         icon: "mdi:clock"
         state: "{{ 0 }}"
+
+      - name: "WattWise Battery Charge Grid Session"
+        unique_id: "wattwise_battery_charge_grid_session"
+        unit_of_measurement: "kWh"
+        state_class: "total"
+        device_class: "energy"
+        icon: "mdi:battery-charging-high"
+        state: "{{ 0 }}"
+        attributes:
+          session_start: "{{ none }}"
+          session_duration: "{{ 0 }}"
 
   - binary_sensor:
       - name: "WattWise Battery Charging from Grid"
