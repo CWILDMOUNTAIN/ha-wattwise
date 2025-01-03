@@ -123,6 +123,47 @@ class WattWise(hass.Hass):
         self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS = (
             "binary_sensor.wattwise_within_cheapest_3_hours"  # hours
         )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_4_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_4_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_5_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_5_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_6_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_6_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_7_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_7_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_CHEAPEST_8_HOURS = (
+            "binary_sensor.wattwise_within_cheapest_8_hours"  # hours
+        )
+
+        # Expensive window binary sensors
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_1_HOUR = (
+            "binary_sensor.wattwise_within_most_expensive_hour"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_2_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_2_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_3_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_3_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_4_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_4_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_5_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_5_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_6_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_6_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_7_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_7_hours"  # hours
+        )
+        self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_8_HOURS = (
+            "binary_sensor.wattwise_within_most_expensive_8_hours"  # hours
+        )
 
         # maximum price threshold to exclude excessively high prices in the cheap price windows
         self.MAX_PRICE_THRESH_CT = float(
@@ -146,14 +187,23 @@ class WattWise(hass.Hass):
         self.charging_from_grid = False
         self.discharging_to_house = False
 
-        # Initialize forecast storage
+        # Initialize forecast and optimization storage
         self.consumption_forecast = []
         self.solar_forecast = []
         self.price_forecast = []
+        self.charging_schedule = []
+        self.max_discharge_possible = []
+        self.within_cheapest_1_hour = []
+        self.within_cheapest_2_hours = []
+        self.within_cheapest_3_hours = []
+        self.within_most_expensive_1_hour = []
+        self.within_most_expensive_2_hours = []
+        self.within_most_expensive_3_hours = []
 
         # Path to store consumption history
         self.CONSUMPTION_HISTORY_FILE = "/config/apps/wattwise_consumption_history.json"
         self.CHEAP_WINDOWS_FILE = "/config/apps/wattwise_cheap_windows.json"
+        self.EXPENSIVE_WINDOWS_FILE = "/config/apps/wattwise_expensive_windows.json"
 
         # Fetch and set initial states from Home Assistant
         self.set_initial_states()
@@ -163,7 +213,7 @@ class WattWise(hass.Hass):
         next_run = now.replace(minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run += datetime.timedelta(hours=1)
-        self.run_hourly(self.start_optimization_process, next_run)
+        self.run_hourly(self.optimize, next_run)
         self.log(f"Scheduled hourly optimization starting at {next_run}.")
 
         # Listen for a custom event to trigger optimization manually
@@ -172,7 +222,7 @@ class WattWise(hass.Hass):
             "Listening for manual optimization trigger event 'MANUAL_BATTERY_OPTIMIZATION'."
         )
         # Run the optimization process 30 seconds after startup
-        self.run_in(self.start_optimization_process, 5)
+        self.run_in(self.optimize, 5)
         self.log("Scheduled optimization to run 30 seconds after startup.")
 
     def set_initial_states(self):
@@ -207,9 +257,9 @@ class WattWise(hass.Hass):
             kwargs (dict): Additional keyword arguments.
         """
         self.log("Manual optimization trigger received.")
-        self.start_optimization_process({})
+        self.optimize({})
 
-    def start_optimization_process(self, kwargs):
+    def optimize(self, kwargs):
         """
         Starts the optimization process by fetching forecasts.
 
@@ -217,10 +267,7 @@ class WattWise(hass.Hass):
             kwargs (dict): Additional keyword arguments.
         """
 
-        self.log("############ Start Opimization ############")
-        self.consumption_forecast = []
-        self.solar_forecast = []
-        self.price_forecast = []
+        self.log("############ Start Optimization ############")
 
         # Start fetching forecasts
         self.T = self.TIME_HORIZON  # Reset T before each run.
@@ -228,7 +275,22 @@ class WattWise(hass.Hass):
         self.get_solar_production_forecast()
         self.get_energy_price_forecast()
         self.optimize_battery()
-        self.log("############ End Opimization ############")
+
+        # Compute the maximum possible discharge per hour
+        self.calculate_max_discharge_possible()
+
+        # identify cheapest and most expensive hours based on grid tariffs
+        self.identify_cheapest_hours()
+        self.identify_most_expensive_hours()
+
+        # Update forecast sensors
+        self.update_forecast_sensors()
+
+        # Schedule actions based on the optimized schedule
+        # self.schedule_actions(self.charging_schedule)
+        # self.log("Charging and discharging actions scheduled.")
+
+        self.log("############ End Optimization ############")
         return
 
     def get_consumption_forecast(self):
@@ -240,6 +302,8 @@ class WattWise(hass.Hass):
         per hour over the past seven days.
         """
         self.log("Retrieving consumption forecast.")
+
+        self.consumption_forecast = []
 
         # Load existing history
         history_data = self.load_consumption_history()
@@ -417,7 +481,7 @@ class WattWise(hass.Hass):
         # Combine today's and tomorrow's data
         combined_forecast_data = forecast_data_today + forecast_data_tomorrow
 
-        solar_forecast = []
+        self.solar_forecast = []
         now = get_now_time()
         for t in range(self.T):
             forecast_time = now + datetime.timedelta(hours=t)
@@ -438,9 +502,8 @@ class WattWise(hass.Hass):
                     self.T = t
                 self.log(f"Setting time horizon to {self.T} hours.")
                 break
-            solar_forecast.append(value)
-        self.log(f"Solar production forecast retrieved: {solar_forecast}")
-        self.solar_forecast = solar_forecast
+            self.solar_forecast.append(value)
+        self.log(f"Solar production forecast retrieved: {self.solar_forecast}")
         return
 
     def get_energy_price_forecast(self):
@@ -452,6 +515,9 @@ class WattWise(hass.Hass):
         it to the next T hours, converting prices from EUR/kWh to ct/kWh.
         """
         self.log("Retrieving energy price forecast.")
+
+        self.price_forecast = []
+
         # Retrieve energy price forecast from Home Assistant entity
         price_data_today = self.get_state(self.PRICE_FORECAST_SENSOR, attribute="today")
         price_data_tomorrow = self.get_state(
@@ -510,6 +576,8 @@ class WattWise(hass.Hass):
             None
         """
         self.log("Starting battery optimization process.")
+
+        self.charging_schedule = []
 
         # Get initial State of Charge (SoC) in percentage
         SoC_percentage_str = self.get_state(self.BATTERY_SOC_SENSOR)
@@ -661,7 +729,6 @@ class WattWise(hass.Hass):
             return
 
         # Extract the optimized charging schedule
-        charging_schedule = []
         now = get_now_time()
         for t in range(self.T):
             charge_solar = Ch_solar[t].varValue
@@ -687,7 +754,7 @@ class WattWise(hass.Hass):
                 f"SoC = {soc:.2f} kWh, "
                 f"Battery Full = {int(full_charge)}"
             )
-            charging_schedule.append(
+            self.charging_schedule.append(
                 {
                     "time": forecast_time,
                     "charge_solar": charge_solar,
@@ -701,12 +768,11 @@ class WattWise(hass.Hass):
                 }
             )
 
-        # Compute the maximum possible discharge per hour
-        max_discharge_possible = self.calculate_max_discharge_possible(
-            charging_schedule
-        )
+        return
 
+    def identify_cheapest_hours(self):
         # Determine the forecast date (assuming price forecasts are for the next day)
+        now = get_now_time()
         forecast_date = now.date()
         self.log(f"Forecast date determined as {forecast_date}.")
 
@@ -716,19 +782,34 @@ class WattWise(hass.Hass):
         cheapest_hours_1 = []
         cheapest_hours_2 = []
         cheapest_hours_3 = []
+        cheapest_hours_4 = []
+        cheapest_hours_5 = []
+        cheapest_hours_6 = []
+        cheapest_hours_7 = []
+        cheapest_hours_8 = []
 
         cheapest_dates_1 = []
         cheapest_dates_2 = []
         cheapest_dates_3 = []
+        cheapest_dates_4 = []
+        cheapest_dates_5 = []
+        cheapest_dates_6 = []
+        cheapest_dates_7 = []
+        cheapest_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
         if (cheap_windows_data.get("forecast_date") != forecast_date.isoformat()) and (
             now.hour > 13
         ):
             # New forecast period, find and save new windows
-            cheapest_hours_1 = self.find_cheapest_windows(P_t, 1)
-            cheapest_hours_2 = self.find_cheapest_windows(P_t, 2)
-            cheapest_hours_3 = self.find_cheapest_windows(P_t, 3)
+            cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
+            cheapest_hours_2 = self.find_cheapest_windows(self.price_forecast, 2)
+            cheapest_hours_3 = self.find_cheapest_windows(self.price_forecast, 3)
+            cheapest_hours_4 = self.find_cheapest_windows(self.price_forecast, 4)
+            cheapest_hours_5 = self.find_cheapest_windows(self.price_forecast, 5)
+            cheapest_hours_6 = self.find_cheapest_windows(self.price_forecast, 6)
+            cheapest_hours_7 = self.find_cheapest_windows(self.price_forecast, 7)
+            cheapest_hours_8 = self.find_cheapest_windows(self.price_forecast, 8)
 
             cheapest_dates_1 = [
                 relativeHourToDate(hour).isoformat() for hour in cheapest_hours_1
@@ -739,12 +820,32 @@ class WattWise(hass.Hass):
             cheapest_dates_3 = [
                 relativeHourToDate(hour).isoformat() for hour in cheapest_hours_3
             ]
+            cheapest_dates_4 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_4
+            ]
+            cheapest_dates_5 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_5
+            ]
+            cheapest_dates_6 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_6
+            ]
+            cheapest_dates_7 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_7
+            ]
+            cheapest_dates_8 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_8
+            ]
 
             # Save windows
             windows = {
                 "cheapest_dates_1": cheapest_dates_1,
                 "cheapest_dates_2": cheapest_dates_2,
                 "cheapest_dates_3": cheapest_dates_3,
+                "cheapest_dates_4": cheapest_dates_4,
+                "cheapest_dates_5": cheapest_dates_5,
+                "cheapest_dates_6": cheapest_dates_6,
+                "cheapest_dates_7": cheapest_dates_7,
+                "cheapest_dates_8": cheapest_dates_8,
             }
             self.save_cheap_windows(forecast_date, windows)
             self.log(f"New cheap windows found for {forecast_date}: {windows}")
@@ -754,6 +855,12 @@ class WattWise(hass.Hass):
             cheapest_dates_1 = windows.get("cheapest_dates_1", [])
             cheapest_dates_2 = windows.get("cheapest_dates_2", [])
             cheapest_dates_3 = windows.get("cheapest_dates_3", [])
+            cheapest_dates_4 = windows.get("cheapest_dates_4", [])
+            cheapest_dates_5 = windows.get("cheapest_dates_5", [])
+            cheapest_dates_6 = windows.get("cheapest_dates_6", [])
+            cheapest_dates_7 = windows.get("cheapest_dates_7", [])
+            cheapest_dates_8 = windows.get("cheapest_dates_8", [])
+
             self.log(f"Using existing cheap windows for {forecast_date}: {windows}")
 
             for iso_date in cheapest_dates_1:
@@ -768,40 +875,260 @@ class WattWise(hass.Hass):
                 date = datetime.datetime.fromisoformat(iso_date)
                 cheapest_hours_3.append(dateToRelativeHour(date))
 
-        # Initialize lists to track which hours are within the cheapest windows
-        within_cheapest_1_hour = [False] * self.T
-        within_cheapest_2_hours = [False] * self.T
-        within_cheapest_3_hours = [False] * self.T
+            for iso_date in cheapest_dates_4:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_4.append(dateToRelativeHour(date))
+
+            for iso_date in cheapest_dates_5:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_5.append(dateToRelativeHour(date))
+
+            for iso_date in cheapest_dates_6:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_6.append(dateToRelativeHour(date))
+
+            for iso_date in cheapest_dates_7:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_7.append(dateToRelativeHour(date))
+
+            for iso_date in cheapest_dates_8:
+                date = datetime.datetime.fromisoformat(iso_date)
+                cheapest_hours_8.append(dateToRelativeHour(date))
+
+        # Initialize lists to track which hours are within the cheapest and most expensive windows
+        self.within_cheapest_1_hour = [False] * self.T
+        self.within_cheapest_2_hours = [False] * self.T
+        self.within_cheapest_3_hours = [False] * self.T
+        self.within_cheapest_4_hours = [False] * self.T
+        self.within_cheapest_5_hours = [False] * self.T
+        self.within_cheapest_6_hours = [False] * self.T
+        self.within_cheapest_7_hours = [False] * self.T
+        self.within_cheapest_8_hours = [False] * self.T
 
         # Assign window indices to the tracking lists
         for idx in cheapest_hours_1:
             if 0 <= idx < self.T:
-                within_cheapest_1_hour[idx] = True
+                self.within_cheapest_1_hour[idx] = True
         for idx in cheapest_hours_2:
             if 0 <= idx < self.T:
-                within_cheapest_2_hours[idx] = True
+                self.within_cheapest_2_hours[idx] = True
         for idx in cheapest_hours_3:
             if 0 <= idx < self.T:
-                within_cheapest_3_hours[idx] = True
+                self.within_cheapest_3_hours[idx] = True
+        for idx in cheapest_hours_4:
+            if 0 <= idx < self.T:
+                self.within_cheapest_4_hours[idx] = True
+        for idx in cheapest_hours_5:
+            if 0 <= idx < self.T:
+                self.within_cheapest_5_hours[idx] = True
+        for idx in cheapest_hours_6:
+            if 0 <= idx < self.T:
+                self.within_cheapest_6_hours[idx] = True
+        for idx in cheapest_hours_7:
+            if 0 <= idx < self.T:
+                self.within_cheapest_7_hours[idx] = True
+        for idx in cheapest_hours_8:
+            if 0 <= idx < self.T:
+                self.within_cheapest_8_hours[idx] = True
 
         self.log(f"Cheapest 1-hour window indices: {cheapest_hours_1}")
         self.log(f"Cheapest 2-hour window indices: {cheapest_hours_2}")
         self.log(f"Cheapest 3-hour window indices: {cheapest_hours_3}")
+        self.log(f"Cheapest 4-hour window indices: {cheapest_hours_4}")
+        self.log(f"Cheapest 5-hour window indices: {cheapest_hours_5}")
+        self.log(f"Cheapest 6-hour window indices: {cheapest_hours_6}")
+        self.log(f"Cheapest 7-hour window indices: {cheapest_hours_7}")
+        self.log(f"Cheapest 8-hour window indices: {cheapest_hours_8}")
 
-        # Update forecast sensors
-        self.update_forecast_sensors(
-            charging_schedule,
-            C_t,
-            S_t,
-            max_discharge_possible,
-            within_cheapest_1_hour,
-            within_cheapest_2_hours,
-            within_cheapest_3_hours,
-        )
+        return
 
-        # Schedule actions based on the optimized schedule
-        # self.schedule_actions(charging_schedule)
-        # self.log("Charging and discharging actions scheduled.")
+    def identify_most_expensive_hours(self):
+        # Determine the forecast date (assuming price forecasts are for the next day)
+        now = get_now_time()
+        forecast_date = now.date()
+        self.log(f"Forecast date determined as {forecast_date}.")
+
+        # Load existing window assignments
+        expensive_windows_data = self.load_expensive_windows()
+
+        most_expensive_hours_1 = []
+        most_expensive_hours_2 = []
+        most_expensive_hours_3 = []
+        most_expensive_hours_4 = []
+        most_expensive_hours_5 = []
+        most_expensive_hours_6 = []
+        most_expensive_hours_7 = []
+        most_expensive_hours_8 = []
+
+        most_expensive_dates_1 = []
+        most_expensive_dates_2 = []
+        most_expensive_dates_3 = []
+        most_expensive_dates_4 = []
+        most_expensive_dates_5 = []
+        most_expensive_dates_6 = []
+        most_expensive_dates_7 = []
+        most_expensive_dates_8 = []
+
+        # Check if window assignments are already set for the current forecast date
+        if (
+            expensive_windows_data.get("forecast_date") != forecast_date.isoformat()
+        ) and (now.hour > 13):
+            # New forecast period, find and save new windows
+            most_expensive_hours_1 = self.find_most_expensive_windows(
+                self.price_forecast, 1
+            )
+            most_expensive_hours_2 = self.find_most_expensive_windows(
+                self.price_forecast, 2
+            )
+            most_expensive_hours_3 = self.find_most_expensive_windows(
+                self.price_forecast, 3
+            )
+            most_expensive_hours_4 = self.find_most_expensive_windows(
+                self.price_forecast, 4
+            )
+            most_expensive_hours_5 = self.find_most_expensive_windows(
+                self.price_forecast, 5
+            )
+            most_expensive_hours_6 = self.find_most_expensive_windows(
+                self.price_forecast, 6
+            )
+            most_expensive_hours_7 = self.find_most_expensive_windows(
+                self.price_forecast, 7
+            )
+            most_expensive_hours_8 = self.find_most_expensive_windows(
+                self.price_forecast, 8
+            )
+
+            most_expensive_dates_1 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_1
+            ]
+            most_expensive_dates_2 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_2
+            ]
+            most_expensive_dates_3 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_3
+            ]
+            most_expensive_dates_4 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_4
+            ]
+            most_expensive_dates_5 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_5
+            ]
+            most_expensive_dates_6 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_6
+            ]
+            most_expensive_dates_7 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_7
+            ]
+            most_expensive_dates_8 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_8
+            ]
+
+            # Save windows
+            windows = {
+                "most_expensive_dates_1": most_expensive_dates_1,
+                "most_expensive_dates_2": most_expensive_dates_2,
+                "most_expensive_dates_3": most_expensive_dates_3,
+                "most_expensive_dates_4": most_expensive_dates_4,
+                "most_expensive_dates_5": most_expensive_dates_5,
+                "most_expensive_dates_6": most_expensive_dates_6,
+                "most_expensive_dates_7": most_expensive_dates_7,
+                "most_expensive_dates_8": most_expensive_dates_8,
+            }
+            self.save_expensive_windows(forecast_date, windows)
+            self.log(f"New expensive windows found for {forecast_date}: {windows}")
+        else:
+            # Use existing windows
+            windows = expensive_windows_data.get("windows", {})
+            most_expensive_dates_1 = windows.get("most_expensive_dates_1", [])
+            most_expensive_dates_2 = windows.get("most_expensive_dates_2", [])
+            most_expensive_dates_3 = windows.get("most_expensive_dates_3", [])
+            most_expensive_dates_4 = windows.get("most_expensive_dates_4", [])
+            most_expensive_dates_5 = windows.get("most_expensive_dates_5", [])
+            most_expensive_dates_6 = windows.get("most_expensive_dates_6", [])
+            most_expensive_dates_7 = windows.get("most_expensive_dates_7", [])
+            most_expensive_dates_8 = windows.get("most_expensive_dates_8", [])
+
+            self.log(f"Using existing expensive windows for {forecast_date}: {windows}")
+
+            for iso_date in most_expensive_dates_1:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_1.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_2:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_2.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_3:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_3.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_4:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_4.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_5:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_5.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_6:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_6.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_7:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_7.append(dateToRelativeHour(date))
+
+            for iso_date in most_expensive_dates_8:
+                date = datetime.datetime.fromisoformat(iso_date)
+                most_expensive_hours_8.append(dateToRelativeHour(date))
+
+        # Initialize lists to track which hours are within the most_expensive and most expensive windows
+        self.within_most_expensive_1_hour = [False] * self.T
+        self.within_most_expensive_2_hours = [False] * self.T
+        self.within_most_expensive_3_hours = [False] * self.T
+        self.within_most_expensive_4_hours = [False] * self.T
+        self.within_most_expensive_5_hours = [False] * self.T
+        self.within_most_expensive_6_hours = [False] * self.T
+        self.within_most_expensive_7_hours = [False] * self.T
+        self.within_most_expensive_8_hours = [False] * self.T
+
+        # Assign window indices to the tracking lists
+        for idx in most_expensive_hours_1:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_1_hour[idx] = True
+        for idx in most_expensive_hours_2:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_2_hours[idx] = True
+        for idx in most_expensive_hours_3:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_3_hours[idx] = True
+        for idx in most_expensive_hours_4:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_4_hours[idx] = True
+        for idx in most_expensive_hours_5:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_5_hours[idx] = True
+        for idx in most_expensive_hours_6:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_6_hours[idx] = True
+        for idx in most_expensive_hours_7:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_7_hours[idx] = True
+        for idx in most_expensive_hours_8:
+            if 0 <= idx < self.T:
+                self.within_most_expensive_8_hours[idx] = True
+
+        self.log(f"most_expensive 1-hour window indices: {most_expensive_hours_1}")
+        self.log(f"most_expensive 2-hour window indices: {most_expensive_hours_2}")
+        self.log(f"most_expensive 3-hour window indices: {most_expensive_hours_3}")
+        self.log(f"most_expensive 4-hour window indices: {most_expensive_hours_4}")
+        self.log(f"most_expensive 5-hour window indices: {most_expensive_hours_5}")
+        self.log(f"most_expensive 6-hour window indices: {most_expensive_hours_6}")
+        self.log(f"most_expensive 7-hour window indices: {most_expensive_hours_7}")
+        self.log(f"most_expensive 8-hour window indices: {most_expensive_hours_8}")
+
+        return
 
     def schedule_actions(self, schedule):
         """
@@ -956,22 +1283,19 @@ class WattWise(hass.Hass):
         )
         self.set_state(self.BINARY_SENSOR_DISCHARGING, state="off")
 
-    def calculate_max_discharge_possible(self, charging_schedule):
+    def calculate_max_discharge_possible(self):
         """
         Calculates the maximum possible discharge per hour without increasing grid consumption,
         based on the SoC changes and discharging actions.
 
-        Args:
-            charging_schedule (list): The optimized charging schedule.
-
         Returns:
             list: A list containing the maximum possible discharge for each hour.
         """
-        max_discharge_possible = []
-        SoC_future = [entry["soc"] for entry in charging_schedule]
-        discharge_schedule = [entry["discharge"] for entry in charging_schedule]
-        export_schedule = [entry["export"] for entry in charging_schedule]
-        T = len(charging_schedule)
+        self.max_discharge_possible = []
+        SoC_future = [entry["soc"] for entry in self.charging_schedule]
+        discharge_schedule = [entry["discharge"] for entry in self.charging_schedule]
+        export_schedule = [entry["export"] for entry in self.charging_schedule]
+        T = len(self.charging_schedule)
 
         for t in range(T):
             SoC_current = SoC_future[t]
@@ -996,20 +1320,11 @@ class WattWise(hass.Hass):
                 0, min(max_discharge, self.DISCHARGE_RATE_MAX, SoC_current)
             )
 
-            max_discharge_possible.append(max_discharge)
+            self.max_discharge_possible.append(max_discharge)
 
-        return max_discharge_possible
+        return self.max_discharge_possible
 
-    def update_forecast_sensors(
-        self,
-        charging_schedule,
-        consumption_forecast,
-        solar_forecast,
-        max_discharge_possible,
-        within_cheapest_1_hour,
-        within_cheapest_2_hours,
-        within_cheapest_3_hours,
-    ):
+    def update_forecast_sensors(self):
         """
         Updates Home Assistant sensors with forecast data for visualization.
 
@@ -1019,8 +1334,6 @@ class WattWise(hass.Hass):
         current values and that forecast data is available for visualization.
 
         Args:
-            charging_schedule (list of dict): A list containing the optimized charging
-                                              schedule for each hour.
             consumption_forecast (list of float): A list containing the consumption
                                                  forecast for each hour.
             solar_forecast (list of float): A list containing the solar production
@@ -1046,14 +1359,27 @@ class WattWise(hass.Hass):
             self.BINARY_SENSOR_WITHIN_CHEAPEST_1_HOUR: [],
             self.BINARY_SENSOR_WITHIN_CHEAPEST_2_HOURS: [],
             self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_4_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_5_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_6_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_7_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_CHEAPEST_8_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_1_HOUR: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_2_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_3_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_4_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_5_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_6_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_7_HOURS: [],
+            self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_8_HOURS: [],
         }
 
         self.log("Forecast Arrays initialized.")
-
+        self.log(f"Forecast for next {len(self.charging_schedule)} hours.")
         now = get_now_time()
 
         # Build the forecast data
-        for t, entry in enumerate(charging_schedule):
+        for t, entry in enumerate(self.charging_schedule):
             forecast_time = entry["time"]
             timestamp_iso = forecast_time.isoformat()
 
@@ -1091,22 +1417,83 @@ class WattWise(hass.Hass):
                 [timestamp_iso, "on" if desired_discharging else "off"]
             )
             forecasts[self.SENSOR_CONSUMPTION_FORECAST].append(
-                [timestamp_iso, consumption_forecast[t]]
+                [timestamp_iso, self.consumption_forecast[t]]
             )
             forecasts[self.SENSOR_SOLAR_PRODUCTION_FORECAST].append(
-                [timestamp_iso, solar_forecast[t]]
+                [timestamp_iso, self.solar_forecast[t]]
             )
+            self.log(f'self.solar_forecast["{t}"]: "{self.solar_forecast[t]}')
             forecasts[self.SENSOR_MAX_POSSIBLE_DISCHARGE].append(
-                [timestamp_iso, max_discharge_possible[t]]
+                [timestamp_iso, self.max_discharge_possible[t]]
             )
             forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_1_HOUR].append(
-                [timestamp_iso, "on" if within_cheapest_1_hour[t] else "off"]
+                [timestamp_iso, "on" if self.within_cheapest_1_hour[t] else "off"]
             )
             forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_2_HOURS].append(
-                [timestamp_iso, "on" if within_cheapest_2_hours[t] else "off"]
+                [timestamp_iso, "on" if self.within_cheapest_2_hours[t] else "off"]
             )
             forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_3_HOURS].append(
-                [timestamp_iso, "on" if within_cheapest_3_hours[t] else "off"]
+                [timestamp_iso, "on" if self.within_cheapest_3_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_4_HOURS].append(
+                [timestamp_iso, "on" if self.within_cheapest_4_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_5_HOURS].append(
+                [timestamp_iso, "on" if self.within_cheapest_5_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_6_HOURS].append(
+                [timestamp_iso, "on" if self.within_cheapest_6_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_7_HOURS].append(
+                [timestamp_iso, "on" if self.within_cheapest_7_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_CHEAPEST_8_HOURS].append(
+                [timestamp_iso, "on" if self.within_cheapest_8_hours[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_1_HOUR].append(
+                [timestamp_iso, "on" if self.within_most_expensive_1_hour[t] else "off"]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_2_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_2_hours[t] else "off",
+                ]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_3_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_3_hours[t] else "off",
+                ]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_4_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_4_hours[t] else "off",
+                ]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_5_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_5_hours[t] else "off",
+                ]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_6_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_6_hours[t] else "off",
+                ]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_7_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_7_hours[t] else "off",
+                ]
+            )
+            forecasts[self.BINARY_SENSOR_WITHIN_MOST_EXPENSIVE_8_HOURS].append(
+                [
+                    timestamp_iso,
+                    "on" if self.within_most_expensive_8_hours[t] else "off",
+                ]
             )
 
         # Update sensors
@@ -1153,7 +1540,7 @@ class WattWise(hass.Hass):
         self.log(f"Session: current_session: {current_session}")
 
         # Look for a new charging session in the forecast
-        for t, entry in enumerate(charging_schedule):
+        for t, entry in enumerate(self.charging_schedule):
             self.log(
                 f't = {t}, entry["charge_grid"] = {entry["charge_grid"]}, in_session: {in_session}'
             )
@@ -1230,6 +1617,31 @@ class WattWise(hass.Hass):
         )
         return list(range(min_start, min_start + window_size))
 
+    def find_most_expensive_windows(self, prices, window_size):
+        """
+        Finds the start index of the most expensive consecutive window of the given size.
+
+        Args:
+            prices (list of float): List of prices in ct/kWh.
+            window_size (int): Size of the window in hours.
+
+        Returns:
+            list of int: List of indices that are within the most expensive window.
+        """
+        self.log(f"Finding most expensive {window_size}h window.")
+        max_total = float("-inf")
+        max_start = 0
+        for i in range(len(prices) - window_size + 1):
+            window = prices[i : i + window_size]
+            window_total = sum(window)
+            if window_total > max_total:
+                max_total = window_total
+                max_start = i
+        self.log(
+            f"Most expensive {window_size}h window: {max_start} - {max_start + window_size}."
+        )
+        return list(range(max_start, max_start + window_size))
+
     def load_cheap_windows(self):
         """
         Loads the cheap window assignments from a JSON file.
@@ -1265,6 +1677,42 @@ class WattWise(hass.Hass):
                 self.log("Cheap window assignments saved.")
         except Exception as e:
             self.error(f"Error saving cheap window assignments: {e}")
+
+    def load_expensive_windows(self):
+        """
+        Loads the expensive window assignments from a JSON file.
+
+        Returns:
+            dict: Contains 'forecast_date' and 'windows' if available, else empty dict.
+        """
+        if os.path.exists(self.EXPENSIVE_WINDOWS_FILE):
+            try:
+                with open(self.EXPENSIVE_WINDOWS_FILE, "r") as f:
+                    data = json.load(f)
+                    self.log("Loaded existing expensive window assignments.")
+                    return data
+            except Exception as e:
+                self.error(f"Error loading expensive window assignments: {e}")
+                return {}
+        else:
+            self.log("No existing expensive window assignments found.")
+            return {}
+
+    def save_expensive_windows(self, forecast_date, windows):
+        """
+        Saves the expensive window assignments to a JSON file.
+
+        Args:
+            forecast_date (datetime.date): The date for which the windows are assigned.
+            windows (dict): Contains lists of indices for 1, 2, and 3-hour windows.
+        """
+        data = {"forecast_date": forecast_date.isoformat(), "windows": windows}
+        try:
+            with open(self.EXPENSIVE_WINDOWS_FILE, "w") as f:
+                json.dump(data, f)
+                self.log("Cheap window assignments saved.")
+        except Exception as e:
+            self.error(f"Error saving expensive window assignments: {e}")
 
 
 def relativeHourToDate(hour: int) -> datetime:
