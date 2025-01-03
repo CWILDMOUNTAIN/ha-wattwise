@@ -136,7 +136,7 @@ template:
         state: "{{ 0 }}"
         attributes:
           forecast: "{{ [] }}"
-          
+
       - name: "WattWise Forecast Horizon"
         unique_id: "wattwise_forecast_horizon"
         unit_of_measurement: "h"
