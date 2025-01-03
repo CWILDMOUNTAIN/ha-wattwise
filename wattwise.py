@@ -19,7 +19,6 @@ import datetime
 import json
 import os
 from datetime import timedelta
-from typing import List
 
 import appdaemon.plugins.hass.hassapi as hass
 import numpy as np
@@ -365,7 +364,7 @@ class WattWise(hass.Hass):
                 avg_consumption = 0  # Default if no data
             average_consumption.append(avg_consumption)
 
-        self.log(f"Consumption forecast retrieved.")
+        self.log("Consumption forecast retrieved.")
 
         # Store the forecast for use in optimization
         self.consumption_forecast = average_consumption
