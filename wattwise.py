@@ -810,9 +810,7 @@ class WattWise(hass.Hass):
         cheapest_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
-        if (cheap_windows_data.get("forecast_date") != forecast_date.isoformat()) and (
-            now.hour > 13
-        ):
+        if now.hour == 15:
             # New forecast period, find and save new windows
             cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
             cheapest_hours_2 = self.find_cheapest_windows(self.price_forecast, 2)
@@ -1033,9 +1031,7 @@ class WattWise(hass.Hass):
         most_expensive_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
-        if (
-            expensive_windows_data.get("forecast_date") != forecast_date.isoformat()
-        ) and (now.hour > 13):
+        if now.hour == 15:
             # New forecast period, find and save new windows
             most_expensive_hours_1 = self.find_most_expensive_windows(
                 self.price_forecast, 1
