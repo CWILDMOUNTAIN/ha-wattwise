@@ -861,6 +861,7 @@ class WattWise(hass.Hass):
             }
             self.save_cheap_windows(forecast_date, windows)
             self.log(f"New cheap windows found for {forecast_date}: {windows}")
+            
         elif now.hour == 0:
             # New forecast period, find and save new windows
             cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
@@ -910,6 +911,7 @@ class WattWise(hass.Hass):
             }
             self.save_cheap_windows(forecast_date, windows)
             self.log(f"New cheap windows found for {forecast_date}: {windows}")
+            
         else:
             # Use existing windows
             windows = cheap_windows_data.get("windows", {})
@@ -1098,6 +1100,7 @@ class WattWise(hass.Hass):
             }
             self.save_expensive_windows(forecast_date, windows)
             self.log(f"New expensive windows found for {forecast_date}: {windows}")
+            
         elif now.hour == 0:
             # New forecast period, find and save new windows
             most_expensive_hours_1 = self.find_most_expensive_windows(
@@ -1163,6 +1166,7 @@ class WattWise(hass.Hass):
             }
             self.save_expensive_windows(forecast_date, windows)
             self.log(f"New expensive windows found for {forecast_date}: {windows}")
+            
         else:
             # Use existing windows
             windows = expensive_windows_data.get("windows", {})
