@@ -401,6 +401,7 @@ class WattWise(hass.Hass):
             history_data (list): List of historical consumption data.
         """
         try:
+
             def make_json_serializable(obj):
                 if isinstance(obj, dict):
                     return {k: make_json_serializable(v) for k, v in obj.items()}
@@ -409,9 +410,10 @@ class WattWise(hass.Hass):
                 elif isinstance(obj, datetime.datetime):
                     return obj.isoformat()
                 else:
-                     return obj
+                    return obj
+
             cleaned_data = make_json_serializable(history_data)
-            
+
             with open(self.CONSUMPTION_HISTORY_FILE, "w") as f:
                 json.dump(cleaned_data, f)
                 filepath = os.path.abspath(self.CONSUMPTION_HISTORY_FILE)
