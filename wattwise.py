@@ -860,7 +860,7 @@ class WattWise(hass.Hass):
                 "cheapest_dates_8": cheapest_dates_8,
             }
              self.save_cheap_windows(forecast_date, windows)
-            self.log(f"New cheap windows found for {forecast_date}: {windows}")
+             self.log(f"New cheap windows found for {forecast_date}: {windows}")
         elif now.hour == 0:
             # New forecast period, find and save new windows
             cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
