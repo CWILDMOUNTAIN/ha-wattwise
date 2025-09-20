@@ -401,6 +401,7 @@ class WattWise(hass.Hass):
             history_data (list): List of historical consumption data.
         """
         try:
+
             def make_json_serializable(obj):
                 if isinstance(obj, dict):
                     return {k: make_json_serializable(v) for k, v in obj.items()}
@@ -409,9 +410,10 @@ class WattWise(hass.Hass):
                 elif isinstance(obj, datetime.datetime):
                     return obj.isoformat()
                 else:
-                     return obj
+                    return obj
+
             cleaned_data = make_json_serializable(history_data)
-            
+
             with open(self.CONSUMPTION_HISTORY_FILE, "w") as f:
                 json.dump(cleaned_data, f)
                 filepath = os.path.abspath(self.CONSUMPTION_HISTORY_FILE)
@@ -810,9 +812,56 @@ class WattWise(hass.Hass):
         cheapest_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
-        if (cheap_windows_data.get("forecast_date") != forecast_date.isoformat()) and (
-            now.hour > 13
-        ):
+        if now.hour == 15:
+            # New forecast period, find and save new windows
+            cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
+            cheapest_hours_2 = self.find_cheapest_windows(self.price_forecast, 2)
+            cheapest_hours_3 = self.find_cheapest_windows(self.price_forecast, 3)
+            cheapest_hours_4 = self.find_cheapest_windows(self.price_forecast, 4)
+            cheapest_hours_5 = self.find_cheapest_windows(self.price_forecast, 5)
+            cheapest_hours_6 = self.find_cheapest_windows(self.price_forecast, 6)
+            cheapest_hours_7 = self.find_cheapest_windows(self.price_forecast, 7)
+            cheapest_hours_8 = self.find_cheapest_windows(self.price_forecast, 8)
+
+            cheapest_dates_1 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_1
+            ]
+            cheapest_dates_2 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_2
+            ]
+            cheapest_dates_3 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_3
+            ]
+            cheapest_dates_4 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_4
+            ]
+            cheapest_dates_5 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_5
+            ]
+            cheapest_dates_6 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_6
+            ]
+            cheapest_dates_7 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_7
+            ]
+            cheapest_dates_8 = [
+                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_8
+            ]
+
+            # Save windows
+            windows = {
+                "cheapest_dates_1": cheapest_dates_1,
+                "cheapest_dates_2": cheapest_dates_2,
+                "cheapest_dates_3": cheapest_dates_3,
+                "cheapest_dates_4": cheapest_dates_4,
+                "cheapest_dates_5": cheapest_dates_5,
+                "cheapest_dates_6": cheapest_dates_6,
+                "cheapest_dates_7": cheapest_dates_7,
+                "cheapest_dates_8": cheapest_dates_8,
+            }
+             self.save_cheap_windows(forecast_date, windows)
+            self.log(f"New cheap windows found for {forecast_date}: {windows}")
+        elif now.hour == 0:
             # New forecast period, find and save new windows
             cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
             cheapest_hours_2 = self.find_cheapest_windows(self.price_forecast, 2)
@@ -982,9 +1031,72 @@ class WattWise(hass.Hass):
         most_expensive_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
-        if (
-            expensive_windows_data.get("forecast_date") != forecast_date.isoformat()
-        ) and (now.hour > 13):
+        if now.hour == 15:
+            # New forecast period, find and save new windows
+            most_expensive_hours_1 = self.find_most_expensive_windows(
+                self.price_forecast, 1
+            )
+            most_expensive_hours_2 = self.find_most_expensive_windows(
+                self.price_forecast, 2
+            )
+            most_expensive_hours_3 = self.find_most_expensive_windows(
+                self.price_forecast, 3
+            )
+            most_expensive_hours_4 = self.find_most_expensive_windows(
+                self.price_forecast, 4
+            )
+            most_expensive_hours_5 = self.find_most_expensive_windows(
+                self.price_forecast, 5
+            )
+            most_expensive_hours_6 = self.find_most_expensive_windows(
+                self.price_forecast, 6
+            )
+            most_expensive_hours_7 = self.find_most_expensive_windows(
+                self.price_forecast, 7
+            )
+            most_expensive_hours_8 = self.find_most_expensive_windows(
+                self.price_forecast, 8
+            )
+
+            most_expensive_dates_1 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_1
+            ]
+            most_expensive_dates_2 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_2
+            ]
+            most_expensive_dates_3 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_3
+            ]
+            most_expensive_dates_4 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_4
+            ]
+            most_expensive_dates_5 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_5
+            ]
+            most_expensive_dates_6 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_6
+            ]
+            most_expensive_dates_7 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_7
+            ]
+            most_expensive_dates_8 = [
+                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_8
+            ]
+
+            # Save windows
+            windows = {
+                "most_expensive_dates_1": most_expensive_dates_1,
+                "most_expensive_dates_2": most_expensive_dates_2,
+                "most_expensive_dates_3": most_expensive_dates_3,
+                "most_expensive_dates_4": most_expensive_dates_4,
+                "most_expensive_dates_5": most_expensive_dates_5,
+                "most_expensive_dates_6": most_expensive_dates_6,
+                "most_expensive_dates_7": most_expensive_dates_7,
+                 "most_expensive_dates_8": most_expensive_dates_8,
+            }
+            self.save_expensive_windows(forecast_date, windows)
+            self.log(f"New expensive windows found for {forecast_date}: {windows}")
+        elif now.hour == 0:
             # New forecast period, find and save new windows
             most_expensive_hours_1 = self.find_most_expensive_windows(
                 self.price_forecast, 1
