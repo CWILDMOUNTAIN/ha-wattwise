@@ -67,6 +67,10 @@ class WattWise(hass.Hass):
             "solar_forecast_sensor_tomorrow",
             "sensor.solcast_pv_forecast_prognose_morgen",
         )
+        self.SOLAR_FORECAST_SENSOR_DAY_AFTER_TOMORROW = self.args.get(
+            "solar_forecast_sensor_day_after_tomorrow",
+            "sensor.solcast_pv_forecast_prognose_morgen",
+        )
         self.BATTERY_SOC_SENSOR = self.args.get(
             "battery_soc_sensor", "sensor.s10x_state_of_charge"
         )
@@ -469,17 +473,21 @@ class WattWise(hass.Hass):
         """
         Retrieves the solar production forecast for the next T hours.
 
-        This method fetches the solar production forecast data from today's and
-        tomorrow's forecast sensors in Home Assistant. It combines the data and
-        maps it to the next T hours, adjusting for any forecast errors.
+        This method fetches the solar production forecast data from today's,
+        tomorrow's, and day-after-tomorrow's forecast sensors in Home Assistant.
+        It combines the data and maps it to the next T hours, adjusting for any forecast errors.
         """
         self.log("Retrieving solar production forecast.")
+
         # Retrieve solar production forecast from Home Assistant entities
         forecast_data_today = self.get_state(
             self.SOLAR_FORECAST_SENSOR_TODAY, attribute="detailedHourly"
         )
         forecast_data_tomorrow = self.get_state(
             self.SOLAR_FORECAST_SENSOR_TOMORROW, attribute="detailedHourly"
+        )
+        forecast_data_day_after = self.get_state(
+            self.SOLAR_FORECAST_SENSOR_DAY_AFTER_TOMORROW, attribute="detailedHourly"
         )
 
         if not forecast_data_today:
@@ -488,12 +496,16 @@ class WattWise(hass.Hass):
 
         if not forecast_data_tomorrow:
             forecast_data_tomorrow = []
-            self.log(
-                "Solar production forecast data for tomorrow is not available yet."
-            )
+            self.log("Solar production forecast data for tomorrow is not available yet.")
+        self.log("Solar production forecast data for tomorrow is available and included.")
 
-        # Combine today's and tomorrow's data
-        combined_forecast_data = forecast_data_today + forecast_data_tomorrow
+        if not forecast_data_day_after:
+            forecast_data_day_after = []
+            self.log("Solar production forecast data for day-after-tomorrow is not available yet.")
+        self.log("Solar production forecast data for day-after-tomorrow is available and included.")
+
+        # Combine all available forecast data
+        combined_forecast_data = forecast_data_today + forecast_data_tomorrow + forecast_data_day_after
 
         self.solar_forecast = []
         now = get_now_time()
@@ -525,8 +537,8 @@ class WattWise(hass.Hass):
         Retrieves the energy price forecast for the next T hours.
 
         This method fetches the energy price forecast data from Home Assistant's
-        price forecast sensor. It combines today's and tomorrow's data and maps
-        it to the next T hours, converting prices from EUR/kWh to ct/kWh.
+        price forecast sensor. It combines today's, tomorrow's, and day-after-tomorrow's
+        data and maps it to the next T hours, converting prices from EUR/kWh to ct/kWh.
         """
         self.log("Retrieving energy price forecast.")
 
@@ -534,9 +546,8 @@ class WattWise(hass.Hass):
 
         # Retrieve energy price forecast from Home Assistant entity
         price_data_today = self.get_state(self.PRICE_FORECAST_SENSOR, attribute="today")
-        price_data_tomorrow = self.get_state(
-            self.PRICE_FORECAST_SENSOR, attribute="tomorrow"
-        )
+        price_data_tomorrow = self.get_state(self.PRICE_FORECAST_SENSOR, attribute="tomorrow")
+        price_data_day_after = self.get_state(self.PRICE_FORECAST_SENSOR, attribute="day_after_tomorrow")
 
         if not price_data_today:
             self.error("Energy price forecast data for today is unavailable.")
@@ -545,16 +556,20 @@ class WattWise(hass.Hass):
         now = get_now_time()
         current_hour = now.hour
 
-        # Combine today's and tomorrow's data
+        # Combine today's, tomorrow's, and day-after-tomorrow's data
         combined_price_data = price_data_today
 
         if price_data_tomorrow:
             combined_price_data += price_data_tomorrow
-            self.log(
-                "Tomorrow's energy price data is available and included in the forecast."
-            )
+            self.log("Tomorrow's energy price data is available and included in the forecast.")
         else:
             self.log("Tomorrow's energy price data is not available yet.")
+
+        if price_data_day_after:
+            combined_price_data += price_data_day_after
+            self.log("Day-after-tomorrow's energy price data is available and included in the forecast.")
+        else:
+            self.log("Day-after-tomorrow's energy price data is not available yet.")
 
         # Create the price forecast for the next T hours
         price_forecast = []
@@ -812,56 +827,7 @@ class WattWise(hass.Hass):
         cheapest_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
-        if now.hour == 15:
-            # New forecast period, find and save new windows
-            cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
-            cheapest_hours_2 = self.find_cheapest_windows(self.price_forecast, 2)
-            cheapest_hours_3 = self.find_cheapest_windows(self.price_forecast, 3)
-            cheapest_hours_4 = self.find_cheapest_windows(self.price_forecast, 4)
-            cheapest_hours_5 = self.find_cheapest_windows(self.price_forecast, 5)
-            cheapest_hours_6 = self.find_cheapest_windows(self.price_forecast, 6)
-            cheapest_hours_7 = self.find_cheapest_windows(self.price_forecast, 7)
-            cheapest_hours_8 = self.find_cheapest_windows(self.price_forecast, 8)
-
-            cheapest_dates_1 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_1
-            ]
-            cheapest_dates_2 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_2
-            ]
-            cheapest_dates_3 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_3
-            ]
-            cheapest_dates_4 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_4
-            ]
-            cheapest_dates_5 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_5
-            ]
-            cheapest_dates_6 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_6
-            ]
-            cheapest_dates_7 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_7
-            ]
-            cheapest_dates_8 = [
-                relativeHourToDate(hour).isoformat() for hour in cheapest_hours_8
-            ]
-
-            # Save windows
-            windows = {
-                "cheapest_dates_1": cheapest_dates_1,
-                "cheapest_dates_2": cheapest_dates_2,
-                "cheapest_dates_3": cheapest_dates_3,
-                "cheapest_dates_4": cheapest_dates_4,
-                "cheapest_dates_5": cheapest_dates_5,
-                "cheapest_dates_6": cheapest_dates_6,
-                "cheapest_dates_7": cheapest_dates_7,
-                "cheapest_dates_8": cheapest_dates_8,
-            }
-             self.save_cheap_windows(forecast_date, windows)
-            self.log(f"New cheap windows found for {forecast_date}: {windows}")
-        elif now.hour == 0:
+        if (cheap_windows_data.get("forecast_date") != forecast_date.isoformat()) and (now.hour > 16):
             # New forecast period, find and save new windows
             cheapest_hours_1 = self.find_cheapest_windows(self.price_forecast, 1)
             cheapest_hours_2 = self.find_cheapest_windows(self.price_forecast, 2)
@@ -1031,7 +997,7 @@ class WattWise(hass.Hass):
         most_expensive_dates_8 = []
 
         # Check if window assignments are already set for the current forecast date
-        if now.hour == 15:
+        if (expensive_windows_data.get("forecast_date") != forecast_date.isoformat()) and (now.hour > 16):
             # New forecast period, find and save new windows
             most_expensive_hours_1 = self.find_most_expensive_windows(
                 self.price_forecast, 1
@@ -1093,71 +1059,6 @@ class WattWise(hass.Hass):
                 "most_expensive_dates_6": most_expensive_dates_6,
                 "most_expensive_dates_7": most_expensive_dates_7,
                  "most_expensive_dates_8": most_expensive_dates_8,
-            }
-            self.save_expensive_windows(forecast_date, windows)
-            self.log(f"New expensive windows found for {forecast_date}: {windows}")
-        elif now.hour == 0:
-            # New forecast period, find and save new windows
-            most_expensive_hours_1 = self.find_most_expensive_windows(
-                self.price_forecast, 1
-            )
-            most_expensive_hours_2 = self.find_most_expensive_windows(
-                self.price_forecast, 2
-            )
-            most_expensive_hours_3 = self.find_most_expensive_windows(
-                self.price_forecast, 3
-            )
-            most_expensive_hours_4 = self.find_most_expensive_windows(
-                self.price_forecast, 4
-            )
-            most_expensive_hours_5 = self.find_most_expensive_windows(
-                self.price_forecast, 5
-            )
-            most_expensive_hours_6 = self.find_most_expensive_windows(
-                self.price_forecast, 6
-            )
-            most_expensive_hours_7 = self.find_most_expensive_windows(
-                self.price_forecast, 7
-            )
-            most_expensive_hours_8 = self.find_most_expensive_windows(
-                self.price_forecast, 8
-            )
-
-            most_expensive_dates_1 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_1
-            ]
-            most_expensive_dates_2 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_2
-            ]
-            most_expensive_dates_3 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_3
-            ]
-            most_expensive_dates_4 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_4
-            ]
-            most_expensive_dates_5 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_5
-            ]
-            most_expensive_dates_6 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_6
-            ]
-            most_expensive_dates_7 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_7
-            ]
-            most_expensive_dates_8 = [
-                relativeHourToDate(hour).isoformat() for hour in most_expensive_hours_8
-            ]
-
-            # Save windows
-            windows = {
-                "most_expensive_dates_1": most_expensive_dates_1,
-                "most_expensive_dates_2": most_expensive_dates_2,
-                "most_expensive_dates_3": most_expensive_dates_3,
-                "most_expensive_dates_4": most_expensive_dates_4,
-                "most_expensive_dates_5": most_expensive_dates_5,
-                "most_expensive_dates_6": most_expensive_dates_6,
-                "most_expensive_dates_7": most_expensive_dates_7,
-                "most_expensive_dates_8": most_expensive_dates_8,
             }
             self.save_expensive_windows(forecast_date, windows)
             self.log(f"New expensive windows found for {forecast_date}: {windows}")
