@@ -30,63 +30,135 @@ template:
       - name: "Wattwise Tibber Prices"
         unique_id: "wattwise_tibber_prices"
         state: >
-          {% set ns = namespace(price='unknown') %}
-          {% set prices = state_attr('sensor.average_electricity_price', 'prices_today') %}
-          {% set idx = ((now().hour) % 24) %}
-          {% if prices and prices[idx] is defined %}
-            {% set ns.price = prices[idx].price | float | round(4) %}
+          {% set rates = state_attr('sensor.epex_spot_data_net_price_2', 'data') %}
+          {% set ns = namespace(grouped={}) %}
+          {% if rates %}
+            {% for rate in rates %}
+              {% set dt = as_datetime(rate.start_time) %}
+              {% set hour_key = dt.strftime('%Y-%m-%d %H') %}
+              {% if hour_key in ns.grouped %}
+                {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, ns.grouped[hour_key] + [rate.price_per_kwh])]) %}
+              {% else %}
+                {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, [rate.price_per_kwh])]) %}
+              {% endif %}
+            {% endfor %}
+            {% set current_hour = now().strftime('%Y-%m-%d %H') %}
+            {% if current_hour in ns.grouped and ns.grouped[current_hour] | count > 0 %}
+              {% set values = ns.grouped[current_hour] %}
+              {{ (values | sum / values | count) | round(4) }}
+            {% else %}
+              unavailable
+            {% endif %}
+          {% else %}
+            unavailable
           {% endif %}
-          {{ ns.price }}
         attributes:
           today: >
-            {% set avg = states('sensor.average_electricity_price') | float(0) %}
-            {% set prices = state_attr('sensor.average_electricity_price', 'prices_today') %}
-            {% set ns = namespace(result=[]) %}
-            {% for item in prices %}
-              {% set price = item.get('price') %}
-              {% if price is not none and avg > 0 %}
-                {% set pct = (price / avg * 100) | float(0) %}
-                {% if pct < 60 %}
-                  {% set level = 'VERY_CHEAP' %}
-                {% elif pct <= 90 %}
-                  {% set level = 'CHEAP' %}
-                {% elif pct < 115 %}
-                  {% set level = 'NORMAL' %}
-                {% elif pct < 140 %}
-                  {% set level = 'EXPENSIVE' %}
+            {% set rates = state_attr('sensor.epex_spot_data_net_price_2', 'data') %}
+            {% set ns = namespace(grouped={}, result=[]) %}
+            {% if rates %}
+              {% set all_values = rates | map(attribute='price_per_kwh') | list %}
+              {% set avg_total = (all_values | sum) / (all_values | count) %}
+              {% for rate in rates %}
+                {% set dt = as_datetime(rate.start_time) %}
+                {% set hour_key = dt.strftime('%Y-%m-%d %H') %}
+                {% if hour_key in ns.grouped %}
+                  {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, ns.grouped[hour_key] + [rate.price_per_kwh])]) %}
                 {% else %}
-                  {% set level = 'VERY_EXPENSIVE' %}
+                  {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, [rate.price_per_kwh])]) %}
                 {% endif %}
-                {% set entry = {'total': price | round(4), 'level': level} %}
-                {% set ns.result = ns.result + [entry] %}
-              {% endif %}
-            {% endfor %}
+              {% endfor %}
+              {% for hour, values in ns.grouped.items() %}
+                {% if values | count == 4 %}
+                  {% set avg_hour = (values | sum) / 4 %}
+                  {% set pct = (avg_hour / avg_total * 100) %}
+                  {% set level = 'VERY_CHEAP' if pct < 60 else
+                                 'CHEAP' if pct <= 90 else
+                                 'NORMAL' if pct < 115 else
+                                 'EXPENSIVE' if pct < 140 else
+                                 'VERY_EXPENSIVE' %}
+                  {% set entry_date = hour[:10] %}
+                  {% if entry_date == now().date().isoformat() %}
+                    {% set ns.result = ns.result + [{
+                      'total': avg_hour | round(4),
+                      'level': level
+                    }] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
             {{ ns.result }}
           tomorrow: >
-            {% set avg = states('sensor.average_electricity_price') | float(0) %}
-            {% set prices = state_attr('sensor.average_electricity_price', 'prices_tomorrow') %}
-            {% set ns = namespace(result=[]) %}
-            {% for item in prices %}
-              {% set price = item.get('price') %}
-              {% if price is not none and avg > 0 %}
-                {% set pct = (price / avg * 100) | float(0) %}
-                {% if pct < 60 %}
-                  {% set level = 'VERY_CHEAP' %}
-                {% elif pct <= 90 %}
-                  {% set level = 'CHEAP' %}
-                {% elif pct < 115 %}
-                  {% set level = 'NORMAL' %}
-                {% elif pct < 140 %}
-                  {% set level = 'EXPENSIVE' %}
+            {% set rates = state_attr('sensor.epex_spot_data_net_price_2', 'data') %}
+            {% set ns = namespace(grouped={}, result=[]) %}
+            {% if rates %}
+              {% set all_values = rates | map(attribute='price_per_kwh') | list %}
+              {% set avg_total = (all_values | sum) / (all_values | count) %}
+              {% for rate in rates %}
+                {% set dt = as_datetime(rate.start_time) %}
+                {% set hour_key = dt.strftime('%Y-%m-%d %H') %}
+                {% if hour_key in ns.grouped %}
+                  {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, ns.grouped[hour_key] + [rate.price_per_kwh])]) %}
                 {% else %}
-                  {% set level = 'VERY_EXPENSIVE' %}
+                  {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, [rate.price_per_kwh])]) %}
                 {% endif %}
-                {% set entry = {'total': price | round(4), 'level': level} %}
-                {% set ns.result = ns.result + [entry] %}
-              {% endif %}
-            {% endfor %}
+              {% endfor %}
+              {% for hour, values in ns.grouped.items() %}
+                {% if values | count == 4 %}
+                  {% set avg_hour = (values | sum) / 4 %}
+                  {% set pct = (avg_hour / avg_total * 100) %}
+                  {% set level = 'VERY_CHEAP' if pct < 60 else
+                                 'CHEAP' if pct <= 90 else
+                                 'NORMAL' if pct < 115 else
+                                 'EXPENSIVE' if pct < 140 else
+                                 'VERY_EXPENSIVE' %}
+                  {% set entry_date = hour[:10] %}
+                  {% if entry_date == (now().date() + timedelta(days=1)).isoformat() %}
+                    {% set ns.result = ns.result + [{
+                      'total': avg_hour | round(4),
+                      'level': level
+                    }] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
             {{ ns.result }}
-          unit_of_measurement: "EUR/kWh"
+          day_after_tomorrow: >
+            {% set rates = state_attr('sensor.epex_spot_data_net_price_2', 'data') %}
+            {% set ns = namespace(grouped={}, result=[]) %}
+            {% if rates %}
+              {% set all_values = rates | map(attribute='price_per_kwh') | list %}
+              {% set avg_total = (all_values | sum) / (all_values | count) %}
+              {% for rate in rates %}
+                {% set dt = as_datetime(rate.start_time) %}
+                {% set hour_key = dt.strftime('%Y-%m-%d %H') %}
+                {% if hour_key in ns.grouped %}
+                  {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, ns.grouped[hour_key] + [rate.price_per_kwh])]) %}
+                {% else %}
+                  {% set ns.grouped = dict(ns.grouped.items() | list + [(hour_key, [rate.price_per_kwh])]) %}
+                {% endif %}
+              {% endfor %}
+              {% for hour, values in ns.grouped.items() %}
+                {% if values | count == 4 %}
+                  {% set avg_hour = (values | sum) / 4 %}
+                  {% set pct = (avg_hour / avg_total * 100) %}
+                  {% set level = 'VERY_CHEAP' if pct < 60 else
+                                 'CHEAP' if pct <= 90 else
+                                 'NORMAL' if pct < 115 else
+                                 'EXPENSIVE' if pct < 140 else
+                                 'VERY_EXPENSIVE' %}
+                  {% set entry_date = hour[:10] %}
+                  {% if entry_date == (now().date() + timedelta(days=2)).isoformat() %}
+                    {% set ns.result = ns.result + [{
+                      'total': avg_hour | round(4),
+                      'level': level
+                    }] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+            {{ ns.result }}
+        unit_of_measurement: "EUR/kWh"
       - name: "WattWise Battery Charge from Solar"
         unique_id: "wattwise_battery_charge_from_solar"
         unit_of_measurement: "kW"
