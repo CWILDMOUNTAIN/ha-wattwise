@@ -1645,17 +1645,20 @@ class WattWise(hass.Hass):
         # Update the charge grid session sensor
         self.set_state(
             self.SENSOR_CHARGE_GRID_SESSION,
-            state=round(charge_grid_session, 3),
+            state=self._format_forecast_value(charge_grid_session),
             attributes={
                 "session_start": session_start.isoformat() if session_start else None,
                 "session_duration": session_duration,
             },
         )
+
         self.log(
-            f'Set state "{round(charge_grid_session, 3)}" for self.SENSOR_CHARGE_GRID_SESSION.'
+            f'Set state "{self._format_forecast_value(charge_grid_session)}" '
+            f'for self.SENSOR_CHARGE_GRID_SESSION.'
         )
         self.log(
-            f"Session Start: {session_start.isoformat() if session_start else None}, Session Duration: {session_duration}"
+            f"Session Start: {session_start.isoformat() if session_start else None}, "
+            f"Session Duration: {session_duration}"
         )
 
         # Update the Forecast Time Horizon
